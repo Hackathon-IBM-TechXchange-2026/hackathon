@@ -1,11 +1,120 @@
 {
   "pipeline_status": "READY_FOR_HUMAN_REVIEW",
-  "total_execution_time": 5.98,
+  "total_execution_time": 9.04,
+  "report": {
+    "workflow_comparison": [
+      {
+        "step": "Impact Analysis",
+        "traditional_manual_minutes": 15,
+        "changeflow_automated_seconds": 1.688,
+        "changeflow_human_minutes": 0,
+        "automation_type": "Autonomous IA (01-change-analyzer)",
+        "effort_reduction_percentage": 100,
+        "measured_seconds": 1.688,
+        "basis": "measured"
+      },
+      {
+        "step": "Code Review & Security Audit",
+        "traditional_manual_minutes": 15,
+        "changeflow_automated_seconds": 0.002,
+        "changeflow_human_minutes": 0,
+        "automation_type": "Parallel IA (02-code-reviewer)",
+        "effort_reduction_percentage": 100,
+        "measured_seconds": 0.002,
+        "basis": "measured"
+      },
+      {
+        "step": "Documentation Synchronization",
+        "traditional_manual_minutes": 15,
+        "changeflow_automated_seconds": 0.004,
+        "changeflow_human_minutes": 0,
+        "automation_type": "Parallel IA (03-documentation-agent)",
+        "effort_reduction_percentage": 100,
+        "measured_seconds": 0.004,
+        "basis": "measured"
+      },
+      {
+        "step": "Test Creation & Execution",
+        "traditional_manual_minutes": 30,
+        "changeflow_automated_seconds": 7.351,
+        "changeflow_human_minutes": 0,
+        "automation_type": "Parallel IA (04-test-engineer)",
+        "effort_reduction_percentage": 100,
+        "measured_seconds": 7.351,
+        "basis": "measured"
+      },
+      {
+        "step": "Validation & Gatekeeping",
+        "traditional_manual_minutes": 15,
+        "changeflow_automated_seconds": 0.001,
+        "changeflow_human_minutes": 0,
+        "automation_type": "Autonomous IA (05-validation-agent)",
+        "effort_reduction_percentage": 100,
+        "measured_seconds": 0.001,
+        "basis": "measured"
+      },
+      {
+        "step": "Human Review & Merge Approval",
+        "traditional_manual_minutes": 10,
+        "changeflow_automated_seconds": 0.001,
+        "changeflow_human_minutes": 8,
+        "automation_type": "Human in the Loop Decision",
+        "effort_reduction_percentage": 20,
+        "measured_seconds": 0.0,
+        "basis": "estimated"
+      }
+    ],
+    "measured": {
+      "pipeline_wall_clock_seconds": 9.042,
+      "automation_total_seconds": 9.046,
+      "per_stage_seconds": {
+        "Impact Analysis": 1.688,
+        "Code Review & Security Audit": 0.002,
+        "Documentation Synchronization": 0.004,
+        "Test Creation & Execution": 7.351,
+        "Validation & Gatekeeping": 0.001,
+        "Human Review & Merge Approval": 0.0
+      },
+      "tests": {
+        "tests_executed": 23,
+        "tests_passed": 23,
+        "tests_failed": 0
+      },
+      "coverage_percentage": 92.3,
+      "reviewer_score": 90,
+      "docs_synced": 0,
+      "readiness_score": 95.6
+    },
+    "estimated": {
+      "manual_baseline_minutes": 100.0,
+      "human_review_minutes": 8.0,
+      "effort_saved_minutes": 91.8,
+      "effort_saved_percentage": 91.8,
+      "speedup_factor": "12.3x",
+      "basis": "Estimativa baseada no baseline de refer\u00eancia do benchmark (benchmarks/benchmark-results.json): 100 min manuais vs 8 min de revis\u00e3o humana. N\u00e3o \u00e9 um valor medido \u2014 apenas o tempo de automa\u00e7\u00e3o \u00e9 medido (veja \"measured\")."
+    },
+    "totals": {
+      "traditional_human_minutes": 100.0,
+      "changeflow_automated_total_seconds": 9.046,
+      "changeflow_human_minutes": 8.0,
+      "effort_saved_minutes": 91.8,
+      "effort_saved_percentage": 91.8,
+      "speedup_factor": "12.3x",
+      "basis": {
+        "effort_saved_percentage": "estimated_from_reference_baseline",
+        "automation_seconds": "measured_on_this_run"
+      }
+    },
+    "notes": {
+      "measured": "Valores cronometrados/medidos nesta execu\u00e7\u00e3o (pipeline, automa\u00e7\u00e3o, testes, cobertura, readiness).",
+      "estimated": "Percentuais de redu\u00e7\u00e3o e speedup derivam do baseline de refer\u00eancia do benchmark, n\u00e3o de medi\u00e7\u00e3o."
+    }
+  },
   "agents": {
     "analyzer": {
       "agent": "01-change-analyzer",
       "status": "COMPLETED",
-      "duration_seconds": 0.082,
+      "duration_seconds": 1.688,
       "data": {
         "files_changed": 2,
         "total_additions": 6,
@@ -105,8 +214,9 @@
           }
         ],
         "affected_tests": [
-          "sample-app/tests/unit/payment.service.test.ts",
-          "sample-app/tests/integration/payment.flow.test.ts"
+          "sample-app/tests/integration/payment.flow.test.ts",
+          "sample-app/tests/unit/payment.repository.test.ts",
+          "sample-app/tests/unit/payment.service.test.ts"
         ],
         "affected_docs": [
           "sample-app/docs/API.md",
@@ -120,7 +230,7 @@
     "reviewer": {
       "agent": "02-code-reviewer",
       "status": "PASSED",
-      "duration_seconds": 0.001,
+      "duration_seconds": 0.002,
       "score": 90,
       "files_scanned": [
         "sample-app/src/repository/payment.repository.ts",
@@ -149,15 +259,15 @@
     "documentation": {
       "agent": "03-documentation-agent",
       "status": "SYNCHRONIZED",
-      "duration_seconds": 0.0,
+      "duration_seconds": 0.004,
       "docs_updated": [
         {
-          "file": "sample-app/docs/ARCHITECTURE.md",
+          "file": "sample-app/docs/API.md",
           "change_type": "ALREADY_IN_SYNC",
           "summary": "No new identifiers to document"
         },
         {
-          "file": "sample-app/docs/API.md",
+          "file": "sample-app/docs/ARCHITECTURE.md",
           "change_type": "ALREADY_IN_SYNC",
           "summary": "No new identifiers to document"
         }
@@ -171,26 +281,80 @@
     "tester": {
       "agent": "04-test-engineer",
       "status": "PASSED",
-      "duration_seconds": 1.145,
+      "duration_seconds": 7.351,
       "tests_executed": 23,
       "tests_passed": 23,
       "tests_failed": 0,
-      "coverage_percentage": 98.5,
-      "execution_time_seconds": 5.97,
+      "coverage_percentage": 92.3,
+      "coverage": {
+        "overall": {
+          "statements": 92.3,
+          "functions": 100.0,
+          "branches": 56.7
+        },
+        "total": {
+          "statements": {
+            "covered": 72,
+            "total": 78
+          },
+          "functions": {
+            "covered": 13,
+            "total": 13
+          },
+          "branches": {
+            "covered": 17,
+            "total": 30
+          }
+        },
+        "files": {
+          "sample-app/src/repository/payment.repository.ts": {
+            "statements_percentage": 100.0,
+            "functions_percentage": 100.0,
+            "branches_percentage": 83.3,
+            "statements": "27/27",
+            "functions": "5/5",
+            "branches": "5/6"
+          },
+          "sample-app/src/services/payment.service.ts": {
+            "statements_percentage": 96.2,
+            "functions_percentage": 100.0,
+            "branches_percentage": 57.1,
+            "statements": "25/26",
+            "functions": "5/5",
+            "branches": "8/14"
+          },
+          "sample-app/src/controllers/payment.controller.ts": {
+            "statements_percentage": 80.0,
+            "functions_percentage": 100.0,
+            "branches_percentage": 40.0,
+            "statements": "20/25",
+            "functions": "3/3",
+            "branches": "4/10"
+          }
+        }
+      },
+      "execution_time_seconds": 7.35,
       "test_suites": [
+        {
+          "suite": "sample-app/tests/unit/payment.repository.test.ts",
+          "status": "PASSED",
+          "passed": 10,
+          "failed": 0,
+          "duration_ms": 4845
+        },
+        {
+          "suite": "sample-app/tests/unit/payment.service.test.ts",
+          "status": "PASSED",
+          "passed": 9,
+          "failed": 0,
+          "duration_ms": 4941
+        },
         {
           "suite": "sample-app/tests/integration/payment.flow.test.ts",
           "status": "PASSED",
           "passed": 4,
           "failed": 0,
-          "duration_ms": 2101
-        },
-        {
-          "suite": "sample-app/tests/unit/payment.service.test.ts",
-          "status": "PASSED",
-          "passed": 0,
-          "failed": 0,
-          "duration_ms": 2275
+          "duration_ms": 5007
         }
       ],
       "summary": "23/23 tests passing over 3 suites, 92.3% statement coverage."
@@ -200,63 +364,63 @@
       "status": "READY_FOR_HUMAN_REVIEW",
       "gate_status": "READY_FOR_HUMAN_REVIEW",
       "readiness_score": 95.6,
-      "duration_seconds": 0.0,
+      "duration_seconds": 0.001,
       "metrics": {
         "workflow_comparison": [
           {
             "step": "Impact Analysis",
             "traditional_manual_minutes": 15,
-            "changeflow_automated_seconds": 0.082,
+            "changeflow_automated_seconds": 1.688,
             "changeflow_human_minutes": 0,
             "automation_type": "Autonomous IA (01-change-analyzer)",
             "effort_reduction_percentage": 100,
-            "measured_seconds": 0.082,
+            "measured_seconds": 1.688,
             "basis": "measured"
           },
           {
             "step": "Code Review & Security Audit",
             "traditional_manual_minutes": 15,
-            "changeflow_automated_seconds": 0.001,
+            "changeflow_automated_seconds": 0.002,
             "changeflow_human_minutes": 0,
             "automation_type": "Parallel IA (02-code-reviewer)",
             "effort_reduction_percentage": 100,
-            "measured_seconds": 0.001,
+            "measured_seconds": 0.002,
             "basis": "measured"
           },
           {
             "step": "Documentation Synchronization",
             "traditional_manual_minutes": 15,
-            "changeflow_automated_seconds": 0.0,
+            "changeflow_automated_seconds": 0.004,
             "changeflow_human_minutes": 0,
             "automation_type": "Parallel IA (03-documentation-agent)",
             "effort_reduction_percentage": 100,
-            "measured_seconds": 0.0,
+            "measured_seconds": 0.004,
             "basis": "measured"
           },
           {
             "step": "Test Creation & Execution",
             "traditional_manual_minutes": 30,
-            "changeflow_automated_seconds": 1.145,
+            "changeflow_automated_seconds": 7.351,
             "changeflow_human_minutes": 0,
             "automation_type": "Parallel IA (04-test-engineer)",
             "effort_reduction_percentage": 100,
-            "measured_seconds": 1.145,
+            "measured_seconds": 7.351,
             "basis": "measured"
           },
           {
             "step": "Validation & Gatekeeping",
             "traditional_manual_minutes": 15,
-            "changeflow_automated_seconds": 0.0,
+            "changeflow_automated_seconds": 0.001,
             "changeflow_human_minutes": 0,
             "automation_type": "Autonomous IA (05-validation-agent)",
             "effort_reduction_percentage": 100,
-            "measured_seconds": 0.0,
+            "measured_seconds": 0.001,
             "basis": "measured"
           },
           {
             "step": "Human Review & Merge Approval",
             "traditional_manual_minutes": 10,
-            "changeflow_automated_seconds": 0.0,
+            "changeflow_automated_seconds": 0.001,
             "changeflow_human_minutes": 8,
             "automation_type": "Human in the Loop Decision",
             "effort_reduction_percentage": 20,
@@ -265,14 +429,14 @@
           }
         ],
         "measured": {
-          "pipeline_wall_clock_seconds": 1.229,
-          "automation_total_seconds": 1.228,
+          "pipeline_wall_clock_seconds": 9.042,
+          "automation_total_seconds": 9.046,
           "per_stage_seconds": {
-            "Impact Analysis": 0.082,
-            "Code Review & Security Audit": 0.001,
-            "Documentation Synchronization": 0.0,
-            "Test Creation & Execution": 1.145,
-            "Validation & Gatekeeping": 0.0,
+            "Impact Analysis": 1.688,
+            "Code Review & Security Audit": 0.002,
+            "Documentation Synchronization": 0.004,
+            "Test Creation & Execution": 7.351,
+            "Validation & Gatekeeping": 0.001,
             "Human Review & Merge Approval": 0.0
           },
           "tests": {
@@ -288,18 +452,18 @@
         "estimated": {
           "manual_baseline_minutes": 100.0,
           "human_review_minutes": 8.0,
-          "effort_saved_minutes": 92.0,
-          "effort_saved_percentage": 92.0,
-          "speedup_factor": "12.5x",
+          "effort_saved_minutes": 91.8,
+          "effort_saved_percentage": 91.8,
+          "speedup_factor": "12.3x",
           "basis": "Estimativa baseada no baseline de refer\u00eancia do benchmark (benchmarks/benchmark-results.json): 100 min manuais vs 8 min de revis\u00e3o humana. N\u00e3o \u00e9 um valor medido \u2014 apenas o tempo de automa\u00e7\u00e3o \u00e9 medido (veja \"measured\")."
         },
         "totals": {
           "traditional_human_minutes": 100.0,
-          "changeflow_automated_total_seconds": 1.228,
+          "changeflow_automated_total_seconds": 9.046,
           "changeflow_human_minutes": 8.0,
-          "effort_saved_minutes": 92.0,
-          "effort_saved_percentage": 92.0,
-          "speedup_factor": "12.5x",
+          "effort_saved_minutes": 91.8,
+          "effort_saved_percentage": 91.8,
+          "speedup_factor": "12.3x",
           "basis": {
             "effort_saved_percentage": "estimated_from_reference_baseline",
             "automation_seconds": "measured_on_this_run"
