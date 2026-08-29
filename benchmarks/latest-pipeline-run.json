@@ -169,14 +169,14 @@
       "tests_passed": 13,
       "tests_failed": 0,
       "coverage_percentage": 98.5,
-      "execution_time_seconds": 1.12,
+      "execution_time_seconds": 1.11,
       "test_suites": [
         {
           "suite": "sample-app/tests/unit/payment.service.test.ts",
           "status": "PASSED",
           "passed": 0,
           "failed": 0,
-          "duration_ms": 521
+          "duration_ms": 491
         },
         {
           "suite": "sample-app/tests/integration/payment.flow.test.ts",
