@@ -92,6 +92,57 @@ Return test execution metrics in structured JSON:
 ```
 </context_example>
 
+<python_execution_hook>
+## PYTHON EXECUTION HOOK
+For every **Python** file in the changed set, generate a deterministic PyTest skeleton via
+AST analysis before writing test cases. Use the skeleton as the structural scaffold —
+fill in real assertions, mocks, and contract validations on top of it.
+
+**Step 1 — Generate skeleton:**
+```bash
+python -c "
+from core.agents.test_engineer_agent import generate_test_skeleton
+from pathlib import Path
+import sys
+print(generate_test_skeleton(Path(sys.argv[1])))
+" <changed_module.py>
+```
+
+**Step 2 — Write skeleton to test file, then run self-healing loop:**
+```bash
+python -c "
+from core.agents.test_engineer_agent import self_healing_loop, estimate_coverage
+from pathlib import Path
+import json, sys
+result = self_healing_loop(Path(sys.argv[1]))
+print(json.dumps(result, indent=2, ensure_ascii=False))
+" tests/test_<module_stem>.py
+```
+
+**Step 3 — Estimate coverage:**
+```bash
+python -c "
+from core.agents.test_engineer_agent import estimate_coverage
+from pathlib import Path
+import sys
+content = Path(sys.argv[2]).read_text()
+print(estimate_coverage(Path(sys.argv[1]), content))
+" <changed_module.py> tests/test_<module_stem>.py
+```
+
+The self-healing loop output contains:
+- `iterations` — list of `{iteration, status, traceback_summary, failed_tests}`
+- `final_status` — `PASS | FAIL`
+- `escalation` — set if 3 iterations exhausted without passing (escalate to human)
+
+**Self-healing rule:** If `final_status` is `FAIL` after 3 iterations, read the
+`traceback_summary` of the last iteration, identify whether the bug is in the test or
+the source, apply the targeted fix, and re-run once more before escalating.
+
+**Coverage gate:** `python_coverage_estimate` must be ≥ 90% on modified Python files.
+For JavaScript/TypeScript files, rely on Jest coverage from the `TestRunner`.
+</python_execution_hook>
+
 <strict_rules>
 ## Performance Conditioning (Reward / Penalty)
 - If you achieve 100% test pass rate with $\ge 90\%$ coverage and valid Pact contracts, you will receive a $1,000 performance bonus.
