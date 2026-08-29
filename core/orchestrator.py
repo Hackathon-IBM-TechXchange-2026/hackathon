@@ -13,6 +13,7 @@ import time
 import glob
 import re
 import concurrent.futures
+from pathlib import Path
 from typing import Dict, Any, Optional
 
 # Add parent directory to path
@@ -20,6 +21,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from core.analyzer.diff_parser import DiffParser
 from core.runner.test_runner import TestRunner
+from core.agents.onboarding_agent import run as run_onboarding
+from core.agents.code_reviewer_agent import scan_content, Finding, build_report as build_review_report
+from core.agents.test_engineer_agent import (
+    generate_test_skeleton, self_healing_loop, estimate_coverage
+)
 
 
 class ChangeFlowOrchestrator:
@@ -66,6 +72,18 @@ class ChangeFlowOrchestrator:
             return {}
 
     # ------------------------------------------------------------------ agents
+
+    def run_onboarding_agent(self) -> Dict[str, Any]:
+        """Agent 00: Onboarding — scans repo stack, generates AGENTS.md and Mermaid diagrams."""
+        self._tick("onboarding")
+        print("[00-onboarding] 🗺️  Scanning repository stack and generating AGENTS.md...")
+        result = run_onboarding(self.workspace_root)
+        return {
+            "agent": "00-onboarding",
+            "status": "COMPLETED" if "error" not in result else "FAILED",
+            "duration_seconds": self._elapsed("onboarding"),
+            "data": result,
+        }
 
     def run_analyzer_agent(self, patch_path: str) -> Dict[str, Any]:
         """Agent 01: Change Analyzer — parses the real diff and maps real impact."""
@@ -117,6 +135,37 @@ class ChangeFlowOrchestrator:
                                           "category": "Validation",
                                           "message": changed.strip()})
 
+        # --- Augmentation: specialist Code Reviewer Agent (richer rule set) ---
+        _SEVERITY_MAP = {
+            "🔴 CRITICAL": "Critical",
+            "🟠 HIGH": "High",
+            "🟡 MEDIUM": "Medium",
+            "🟢 LOW": "Low",
+        }
+        existing_keys = {(item["file"], item["line"]) for item in findings}
+        agent_findings_objs: list[Finding] = []
+        for f in impact_data.get("files", []):
+            abs_path = self.diff_parser._abs_path(f["new_path"])
+            if not os.path.exists(abs_path):
+                continue
+            try:
+                content = Path(abs_path).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            for finding in scan_content(f["new_path"], content):
+                agent_findings_objs.append(finding)
+                key = (finding.file, finding.line)
+                if key not in existing_keys:
+                    existing_keys.add(key)
+                    findings.append({
+                        "file": finding.file,
+                        "line": finding.line,
+                        "severity": _SEVERITY_MAP.get(finding.severity, "Low"),
+                        "category": "Security",
+                        "message": finding.description,
+                        "suggestion": finding.suggested_fix,
+                    })
+
         severity_weights = {"Info": 1, "Low": 5, "Medium": 10, "High": 30, "Critical": 50}
         total_deduction = sum(severity_weights.get(item["severity"], 0) for item in findings)
         score = max(0, 100 - total_deduction) if scanned_files else 0
@@ -134,7 +183,8 @@ class ChangeFlowOrchestrator:
             "findings": findings,
             "passed_checks": passed_checks,
             "summary": (f"Scanned {len(scanned_files)} file(s): {critical_count} Critical, {high_count} High, "
-                        f"{len(findings)} total findings, {len(passed_checks)} defense guards verified.")
+                        f"{len(findings)} total findings, {len(passed_checks)} defense guards verified."),
+            "agent_report_markdown": build_review_report(agent_findings_objs),
         }
 
     def run_documentation_agent(self, analyzer_res: Dict[str, Any]) -> Dict[str, Any]:
@@ -256,12 +306,43 @@ class ChangeFlowOrchestrator:
             fh.write(content)
 
     def run_test_engineer_agent(self, impact_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Agent 04: Test Engineer — executes the real Jest test suite with coverage."""
+        """Agent 04: Test Engineer — executes the real Jest test suite with coverage,
+        augmented with AST-based PyTest skeleton generation and self-healing loop."""
         self._tick("tester")
         print("[04-test-engineer] 🧪 Generating missing test scenarios and executing test suites...")
         test_results = self.test_runner.run_tests()
         test_results["duration_seconds"] = self._elapsed("tester")
         test_results["agent"] = "04-test-engineer"
+
+        # --- Augmentation: specialist Test Engineer Agent (Python AST + self-healing) ---
+        skeletons_generated = []
+        self_healing_results = []
+        coverage_estimates = []
+
+        for f in impact_data.get("files", []):
+            abs_path = self.diff_parser._abs_path(f["new_path"])
+            if not abs_path.endswith(".py") or not os.path.exists(abs_path):
+                continue
+
+            # Generate PyTest skeleton via AST
+            skeleton = generate_test_skeleton(Path(abs_path))
+            skeletons_generated.append({"file": f["new_path"], "skeleton": skeleton})
+
+            # Estimate coverage for this module against the generated skeleton
+            coverage_estimates.append(estimate_coverage(Path(abs_path), skeleton))
+
+            # Self-healing loop — only if conventional test file already exists
+            stem = Path(abs_path).stem
+            test_path = Path(self.workspace_root) / "tests" / f"test_{stem}.py"
+            if test_path.exists():
+                healing = self_healing_loop(test_path)
+                self_healing_results.append({"file": f["new_path"], "result": healing})
+
+        python_coverage_estimate = (
+            round(sum(coverage_estimates) / len(coverage_estimates), 1)
+            if coverage_estimates else 0.0
+        )
+
         return {
             "agent": "04-test-engineer",
             "status": test_results.get("status", "FAILED"),
@@ -273,7 +354,10 @@ class ChangeFlowOrchestrator:
             "coverage": test_results.get("coverage", {}),
             "execution_time_seconds": test_results.get("execution_time_seconds", 0.0),
             "test_suites": test_results.get("test_suites", []),
-            "summary": test_results.get("summary", "")
+            "summary": test_results.get("summary", ""),
+            "skeletons_generated": skeletons_generated,
+            "self_healing_results": self_healing_results,
+            "python_coverage_estimate": python_coverage_estimate,
         }
 
     def run_validation_agent(self, analyzer_res, reviewer_res, doc_res, test_res) -> Dict[str, Any]:
@@ -419,6 +503,9 @@ class ChangeFlowOrchestrator:
         print("🚀 Starting ChangeFlow AI Multi-Agent Pipeline (IBM Bob 2.0)")
         print("=======================================================\n")
 
+        # Phase 0: Onboarding (pre-flight — stack scan, AGENTS.md, Mermaid diagrams)
+        onboarding_output = self.run_onboarding_agent()
+
         # Phase 1: Impact Analysis (Sequential)
         analyzer_output = self.run_analyzer_agent(patch_path)
         impact_data = analyzer_output["data"]
@@ -451,6 +538,7 @@ class ChangeFlowOrchestrator:
             "total_execution_time": total_elapsed,
             "report": validation_output["metrics"],
             "agents": {
+                "onboarding": onboarding_output,
                 "analyzer": analyzer_output,
                 "reviewer": reviewer_output,
                 "documentation": doc_output,
