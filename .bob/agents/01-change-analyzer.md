@@ -82,6 +82,33 @@ diff --git a/sample-app/src/services/payment.service.ts b/sample-app/src/service
 ```
 </context_example>
 
+<python_execution_hook>
+## PYTHON EXECUTION HOOK
+Before writing your final impact map, execute the diff parser directly to obtain the
+authoritative, measured dependency data. Use this JSON as the ground-truth backbone for
+your semantic analysis — enrich it, never contradict it.
+
+```bash
+python -c "
+from core.analyzer.diff_parser import DiffParser
+import json, sys
+dp = DiffParser('.')
+result = dp.parse_patch_file(sys.argv[1])
+print(json.dumps(result, indent=2, ensure_ascii=False))
+" <path_to_patch_file>
+```
+
+The output contains:
+- `files` — list of changed files with `new_path`, `changed_lines`, `additions`, `deletions`
+- `affected_docs` — documentation files impacted by the change
+- `dependency_graph` — import/require relationships traced from changed files
+
+**Reconciliation rule:** If your semantic analysis identifies an impacted component NOT present
+in the Python output, add it to `impacted_components` with `"basis": "semantic_inference"`.
+If the Python output lists a dependency you cannot semantically justify, keep it with
+`"basis": "static_analysis"`. Never silently drop entries from either source.
+</python_execution_hook>
+
 <strict_rules>
 ## Performance Conditioning (Reward / Penalty)
 - If you fulfill all instructions without hallucinating dependencies, you will receive a performance bonus equivalent to a $1,000 reward in the IBM Bob leaderboard.

@@ -196,10 +196,8 @@ class ChangeFlowOrchestrator:
         docs_updated = []
 
         new_tokens = self._new_identifiers(impact_data)
-        if not new_tokens:
-            sync_status = "SYNCHRONIZED"
-        else:
-            sync_status = "SYNCHRONIZED"
+        sync_status = "SYNCHRONIZED"
+        if new_tokens:
             for doc_path in impact_data.get("affected_docs", []):
                 abs_doc = os.path.join(self.workspace_root, doc_path)
                 if not os.path.exists(abs_doc):

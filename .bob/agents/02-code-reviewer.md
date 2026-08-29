@@ -69,6 +69,36 @@ Return a Markdown severity table followed by a structured JSON block:
 ```
 </context_example>
 
+<python_execution_hook>
+## PYTHON EXECUTION HOOK
+Before writing your semantic review, run the deterministic static analyzer to collect
+rule-based findings (SQL injection patterns, PCI log exposure, bare excepts, handle leaks,
+function length). These are factual ground-truth violations — report ALL of them.
+Then add your semantic layer: architectural regressions, business-logic flaws, and domain
+contract breaks that the regex engine cannot detect.
+
+```bash
+python -c "
+from core.agents.code_reviewer_agent import run, build_report
+import json, sys
+result = run(sys.argv[1:])
+print(json.dumps(result, indent=2, ensure_ascii=False))
+" -- <file1.py> <file2.py> ...
+```
+
+The output contains:
+- `findings` — list of `{severity, file, line, description, snippet, suggested_fix}` dicts
+- `counts` — per-severity totals (`🔴 CRITICAL`, `🟠 HIGH`, `🟡 MEDIUM`, `🟢 LOW`)
+- `report_markdown` — pre-built severity table (use as your **Painel de Status** base)
+
+**Severity mapping to orchestrator schema:**
+`🔴 CRITICAL` → `Critical`, `🟠 HIGH` → `High`, `🟡 MEDIUM` → `Medium`, `🟢 LOW` → `Low`
+
+**Deduplication rule:** If a finding from the Python hook duplicates one you identified
+semantically (same file + line), merge them into one entry with the richer description.
+Never report the same defect twice.
+</python_execution_hook>
+
 <strict_rules>
 ## Performance Conditioning (Reward / Penalty)
 - If you catch all vulnerabilities and deliver surgical reviews without cosmetic noise, you will receive a $1,000 performance bonus.
