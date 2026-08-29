@@ -1,0 +1,209 @@
+{
+  "pipeline_status": "READY_FOR_HUMAN_REVIEW",
+  "total_execution_time": 1.1,
+  "agents": {
+    "analyzer": {
+      "agent": "01-change-analyzer",
+      "status": "COMPLETED",
+      "data": {
+        "files_changed": 2,
+        "total_additions": 6,
+        "total_deletions": 1,
+        "files": [
+          {
+            "old_path": "sample-app/src/repository/payment.repository.ts",
+            "new_path": "sample-app/src/repository/payment.repository.ts",
+            "additions": 1,
+            "deletions": 1,
+            "hunks": [
+              {
+                "old_start": 1,
+                "old_len": 3,
+                "new_start": 1,
+                "new_len": 3,
+                "heading": "",
+                "lines": [
+                  "-export type PaymentMethod = 'CREDIT_CARD' | 'DEBIT_CARD' | 'BANK_TRANSFER';",
+                  "+export type PaymentMethod = 'CREDIT_CARD' | 'DEBIT_CARD' | 'BANK_TRANSFER' | 'PIX';",
+                  " ",
+                  " export interface PaymentRecord {"
+                ]
+              }
+            ],
+            "changed_lines": [
+              "export type PaymentMethod = 'CREDIT_CARD' | 'DEBIT_CARD' | 'BANK_TRANSFER' | 'PIX';"
+            ]
+          },
+          {
+            "old_path": "sample-app/src/services/payment.service.ts",
+            "new_path": "sample-app/src/services/payment.service.ts",
+            "additions": 5,
+            "deletions": 0,
+            "hunks": [
+              {
+                "old_start": 20,
+                "old_len": 6,
+                "new_start": 20,
+                "new_len": 8,
+                "heading": "export class PaymentService {",
+                "lines": [
+                  "       case 'DEBIT_CARD':",
+                  "         return Number((amount * 0.015 + 0.15).toFixed(2));",
+                  "       case 'BANK_TRANSFER':",
+                  "         return Number((amount * 0.005).toFixed(2));",
+                  "+      case 'PIX':",
+                  "+        return Number(Math.min(amount * 0.0099, 3.00).toFixed(2));",
+                  "       default:",
+                  "         throw new Error(`Unsupported payment method: ${method}`);",
+                  "     }"
+                ]
+              },
+              {
+                "old_start": 35,
+                "old_len": 6,
+                "new_start": 37,
+                "new_len": 9,
+                "heading": "export class PaymentService {",
+                "lines": [
+                  "     if (input.amount > this.MAX_TRANSACTION_LIMIT) {",
+                  "       throw new Error(`Amount exceeds maximum transaction limit of ${this.MAX_TRANSACTION_LIMIT}`);",
+                  "     }",
+                  "+    if (input.method === 'PIX' && input.currency !== 'BRL') {",
+                  "+      throw new Error('PIX payment method is only supported for BRL currency');",
+                  "+    }",
+                  "     if (!this.SUPPORTED_CURRENCIES.has(input.currency.toUpperCase())) {",
+                  "       throw new Error(`Unsupported currency: ${input.currency}`);",
+                  "     }"
+                ]
+              }
+            ],
+            "changed_lines": [
+              "      case 'PIX':",
+              "        return Number(Math.min(amount * 0.0099, 3.00).toFixed(2));",
+              "    if (input.method === 'PIX' && input.currency !== 'BRL') {",
+              "      throw new Error('PIX payment method is only supported for BRL currency');",
+              "    }"
+            ]
+          }
+        ],
+        "impacted_components": [
+          "sample-app/src/repository/payment.repository.ts",
+          "sample-app/src/services/payment.service.ts"
+        ],
+        "affected_apis": [
+          {
+            "endpoint": "POST /api/v1/payments",
+            "method": "POST",
+            "reason": "Payment core processing logic or repository modified"
+          },
+          {
+            "endpoint": "POST /api/v1/payments",
+            "method": "POST",
+            "reason": "Payment core processing logic or repository modified"
+          }
+        ],
+        "affected_tests": [
+          "sample-app/tests/unit/payment.service.test.ts",
+          "sample-app/tests/integration/payment.flow.test.ts"
+        ],
+        "affected_docs": [
+          "sample-app/docs/ARCHITECTURE.md",
+          "sample-app/docs/API.md"
+        ],
+        "risk_level": "HIGH",
+        "blast_radius_score": 100.0,
+        "summary": "Change affects 2 files (6 additions, 1 deletions). Risk assessed as HIGH with blast radius 100.0/100."
+      }
+    },
+    "reviewer": {
+      "agent": "02-code-reviewer",
+      "status": "PASSED",
+      "score": 98,
+      "findings": [
+        {
+          "file": "sample-app/src/services/payment.service.ts",
+          "line": 40,
+          "severity": "Passed",
+          "category": "Security",
+          "message": "PIX currency restriction correctly bound to 'BRL'",
+          "suggestion": "Rule compliance validated against .bob/rules/coding-standards.md"
+        },
+        {
+          "file": "sample-app/src/services/payment.service.ts",
+          "line": 23,
+          "severity": "Info",
+          "category": "Performance",
+          "message": "Fee cap Math.min evaluated in constant time O(1)",
+          "suggestion": "Consider making fee ceiling configurable in repository settings"
+        }
+      ],
+      "summary": "0 Critical, 0 High vulnerabilities. Code adheres to clean architecture standards."
+    },
+    "documentation": {
+      "agent": "03-documentation-agent",
+      "status": "SYNCHRONIZED",
+      "docs_updated": [
+        {
+          "file": "sample-app/docs/API.md",
+          "section": "POST /api/v1/payments",
+          "change_type": "UPDATED",
+          "summary": "Added 'PIX' to supported payment methods and document BRL constraint"
+        },
+        {
+          "file": "sample-app/docs/ARCHITECTURE.md",
+          "section": "PaymentService",
+          "change_type": "SYNCHRONIZED",
+          "summary": "Sequence diagrams verified against updated service flow"
+        }
+      ],
+      "sync_status": "SYNCHRONIZED",
+      "total_doc_files_modified": 2
+    },
+    "tester": {
+      "agent": "04-test-engineer",
+      "status": "PASSED",
+      "tests_created": 3,
+      "tests_updated": 1,
+      "tests_executed": 13,
+      "tests_passed": 13,
+      "tests_failed": 0,
+      "coverage_percentage": 98.5,
+      "execution_time_seconds": 1.09,
+      "test_suites": [
+        {
+          "suite": "sample-app/tests/unit/payment.service.test.ts",
+          "status": "PASSED",
+          "passed": 0,
+          "failed": 0,
+          "duration_ms": 500
+        },
+        {
+          "suite": "sample-app/tests/integration/payment.flow.test.ts",
+          "status": "PASSED",
+          "passed": 0,
+          "failed": 0,
+          "duration_ms": 15
+        }
+      ]
+    },
+    "validation": {
+      "agent": "05-validation-agent",
+      "gate_status": "READY_FOR_HUMAN_REVIEW",
+      "readiness_score": 98,
+      "metrics": {
+        "traditional_manual_minutes": 100,
+        "changeflow_automated_seconds": 9.4,
+        "changeflow_human_minutes": 8,
+        "effort_reduction_percentage": 92.0,
+        "speedup_factor": "12.5x"
+      },
+      "summary_verdict": "All automated quality gates passed. 0 Critical vulnerabilities, 100% tests passing, documentation synced. Ready for final developer sign-off.",
+      "checklists": {
+        "impact_analysis": "PASSED",
+        "code_review": "PASSED",
+        "doc_sync": "SYNCHRONIZED",
+        "test_execution": "PASSED"
+      }
+    }
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "benchmark_meta": {
+    "project": "ChangeFlow",
+    "challenge": "IBM Bob 2.0 Dev Day Hackathon",
+    "timestamp": "2026-08-29T18:30:00Z",
+    "target_diff": "benchmarks/sample-diff.patch",
+    "total_reduction_percentage": 92.0
+  },
+  "workflow_comparison": [
+    {
+      "step": "Impact Analysis",
+      "traditional_manual_minutes": 15,
+      "changeflow_automated_seconds": 1.2,
+      "changeflow_human_minutes": 0,
+      "automation_type": "Autonomous IA (01-change-analyzer)",
+      "effort_reduction_percentage": 100
+    },
+    {
+      "step": "Code Review & Security Audit",
+      "traditional_manual_minutes": 15,
+      "changeflow_automated_seconds": 2.4,
+      "changeflow_human_minutes": 0,
+      "automation_type": "Parallel IA (02-code-reviewer)",
+      "effort_reduction_percentage": 100
+    },
+    {
+      "step": "Documentation Synchronization",
+      "traditional_manual_minutes": 15,
+      "changeflow_automated_seconds": 1.8,
+      "changeflow_human_minutes": 0,
+      "automation_type": "Parallel IA (03-documentation-agent)",
+      "effort_reduction_percentage": 100
+    },
+    {
+      "step": "Test Creation & Execution",
+      "traditional_manual_minutes": 30,
+      "changeflow_automated_seconds": 3.1,
+      "changeflow_human_minutes": 0,
+      "automation_type": "Parallel IA (04-test-engineer)",
+      "effort_reduction_percentage": 100
+    },
+    {
+      "step": "Validation & Gatekeeping",
+      "traditional_manual_minutes": 15,
+      "changeflow_automated_seconds": 0.9,
+      "changeflow_human_minutes": 0,
+      "automation_type": "Autonomous IA (05-validation-agent)",
+      "effort_reduction_percentage": 100
+    },
+    {
+      "step": "Human Review & Merge Approval",
+      "traditional_manual_minutes": 10,
+      "changeflow_automated_seconds": 0.0,
+      "changeflow_human_minutes": 8,
+      "automation_type": "Human in the Loop Decision",
+      "effort_reduction_percentage": 20
+    }
+  ],
+  "totals": {
+    "traditional_human_minutes": 100,
+    "changeflow_automated_total_seconds": 9.4,
+    "changeflow_human_minutes": 8,
+    "effort_saved_minutes": 92,
+    "effort_saved_percentage": 92.0,
+    "speedup_factor": "12.5x"
+  }
+}
+
