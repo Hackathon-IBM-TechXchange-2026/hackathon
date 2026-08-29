@@ -1,6 +1,6 @@
 {
   "pipeline_status": "READY_FOR_HUMAN_REVIEW",
-  "total_execution_time": 1.1,
+  "total_execution_time": 1.12,
   "agents": {
     "analyzer": {
       "agent": "01-change-analyzer",
@@ -73,7 +73,8 @@
                   "+    }",
                   "     if (!this.SUPPORTED_CURRENCIES.has(input.currency.toUpperCase())) {",
                   "       throw new Error(`Unsupported currency: ${input.currency}`);",
-                  "     }"
+                  "     }",
+                  ""
                 ]
               }
             ],
@@ -103,8 +104,8 @@
           }
         ],
         "affected_tests": [
-          "sample-app/tests/unit/payment.service.test.ts",
-          "sample-app/tests/integration/payment.flow.test.ts"
+          "sample-app/tests/integration/payment.flow.test.ts",
+          "sample-app/tests/unit/payment.service.test.ts"
         ],
         "affected_docs": [
           "sample-app/docs/ARCHITECTURE.md",
@@ -168,21 +169,21 @@
       "tests_passed": 13,
       "tests_failed": 0,
       "coverage_percentage": 98.5,
-      "execution_time_seconds": 1.09,
+      "execution_time_seconds": 1.12,
       "test_suites": [
         {
           "suite": "sample-app/tests/unit/payment.service.test.ts",
           "status": "PASSED",
           "passed": 0,
           "failed": 0,
-          "duration_ms": 500
+          "duration_ms": 521
         },
         {
           "suite": "sample-app/tests/integration/payment.flow.test.ts",
           "status": "PASSED",
           "passed": 0,
           "failed": 0,
-          "duration_ms": 15
+          "duration_ms": 14
         }
       ]
     },
