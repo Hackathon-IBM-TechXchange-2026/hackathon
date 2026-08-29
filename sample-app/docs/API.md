@@ -20,7 +20,7 @@ Processes and captures a payment transaction synchronously.
 | `idempotencyKey` | `string` | **Yes** | Unique request identifier for duplicate prevention | Non-empty string |
 | `amount` | `number` | **Yes** | Transaction amount | Positive float, max $50,000 |
 | `currency` | `string` | **Yes** | ISO-4217 Currency code | Supported: `USD`, `EUR`, `BRL` |
-| `method` | `string` | **Yes** | Payment rails method | Supported: `CREDIT_CARD`, `DEBIT_CARD`, `BANK_TRANSFER` |
+| `method` | `string` | **Yes** | Payment rails method | Supported: `CREDIT_CARD`, `DEBIT_CARD`, `BANK_TRANSFER`, PIX |
 | `metadata` | `object` | No | Additional custom key-value pairs | Arbitrary JSON object |
 
 ### Example Request
@@ -99,4 +99,9 @@ Retrieves payment record by payment ID.
   }
 }
 ```
+
+## ChangeFlow Automated Documentation Sync
+
+<!-- This section is automatically maintained by ChangeFlow -->
+- `PIX` (_new identifier from sample-app/src/repository/payment.repository.ts, sample-app/src/services/payment.service.ts_)
 

@@ -4,7 +4,8 @@
     "challenge": "IBM Bob 2.0 Dev Day Hackathon",
     "timestamp": "2026-08-29T18:30:00Z",
     "target_diff": "benchmarks/sample-diff.patch",
-    "total_reduction_percentage": 92.0
+    "total_reduction_percentage": 92.0,
+    "note": "traditional_manual_minutes / changeflow_human_minutes são premissas de referência (workload manual do benchmark). O tempo de automação (changeflow_automated_seconds) é medido em tempo real a cada execução do pipeline e sobrescreve os valores aqui."
   },
   "workflow_comparison": [
     {

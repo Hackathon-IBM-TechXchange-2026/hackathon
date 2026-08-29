@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Bot, 
   Layers, 
@@ -23,36 +23,58 @@ import MetricsBadge from './components/MetricsBadge';
 import DiffViewer from './components/DiffViewer';
 import HumanApprovalModal from './components/HumanApprovalModal';
 
+const DEFAULT_TOTALS = {
+  traditional_human_minutes: 100,
+  changeflow_human_minutes: 8,
+  effort_saved_percentage: 92.0,
+  changeflow_automated_total_seconds: 0
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('overview');
-  const [pipelinePhase, setPipelinePhase] = useState(3); // 0: Idle, 1: Analyzer, 2: Parallel, 3: Gatekeeper, 4: Merged
-  const [isSimulating, setIsSimulating] = useState(false);
+  const [pipelinePhase, setPipelinePhase] = useState(0); // 0: Idle, 1: Analyzer, 2: Parallel, 3: Gatekeeper, 4: Merged
+  const [isRunning, setIsRunning] = useState(true);
+  const [runData, setRunData] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [isApprovalOpen, setIsApprovalOpen] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
   const [approvalNote, setApprovalNote] = useState('');
 
-  const runSimulation = () => {
-    setIsSimulating(true);
+  const runPipeline = useCallback(async (fresh = true) => {
+    setIsRunning(true);
     setIsApproved(false);
     setPipelinePhase(0);
+    setLoadError(null);
+    try {
+      const res = await fetch(fresh ? '/api/run' : '/api/latest', {
+        method: fresh ? 'POST' : 'GET',
+        headers: fresh ? { 'Content-Type': 'application/json' } : undefined
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const data = await res.json();
+      setRunData(data);
+      setPipelinePhase(data.pipeline_status === 'READY_FOR_HUMAN_REVIEW' ? 3 : 3);
+    } catch (err) {
+      setLoadError(`Não foi possível conectar ao pipeline. Rode primeiro: .venv/bin/python core/demo_server.py (${err.message})`);
+    } finally {
+      setIsRunning(false);
+    }
+  }, []);
 
-    setTimeout(() => {
-      setPipelinePhase(1); // 01 Analyzer
-      setTimeout(() => {
-        setPipelinePhase(2); // 02, 03, 04 in Parallel
-        setTimeout(() => {
-          setPipelinePhase(3); // 05 Validation Gatekeeper
-          setIsSimulating(false);
-        }, 1200);
-      }, 1000);
-    }, 600);
-  };
+  useEffect(() => {
+    runPipeline(true);
+  }, [runPipeline]);
 
   const handleApprove = (note) => {
     setIsApproved(true);
     setApprovalNote(note || 'Approved by Lead Engineer via ChangeFlow Portal.');
     setPipelinePhase(4);
   };
+
+  const totals = runData?.report?.totals || DEFAULT_TOTALS;
+  const reviewer = runData?.agents?.reviewer || null;
+  const tester = runData?.agents?.tester || null;
+  const validation = runData?.agents?.validation || null;
 
   return (
     <div className="min-h-screen bg-[#0c0d0f] text-zinc-100 flex flex-col">
@@ -76,24 +98,27 @@ export default function App() {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={runSimulation}
-              disabled={isSimulating}
+              onClick={() => runPipeline(true)}
+              disabled={isRunning}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                isSimulating 
+                isRunning 
                   ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
                   : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 hover:border-zinc-600'
               }`}
             >
-              <RotateCcw className={`w-3.5 h-3.5 ${isSimulating ? 'animate-spin' : ''}`} />
+              <RotateCcw className={`w-3.5 h-3.5 ${isRunning ? 'animate-spin' : ''}`} />
               Re-run Pipeline
             </button>
 
             <button
               onClick={() => setIsApprovalOpen(true)}
+              disabled={!runData || isRunning}
               className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-md ${
                 isApproved
                   ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                  : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white glow-blue'
+                  : runData
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white glow-blue'
+                  : 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed'
               }`}
             >
               {isApproved ? (
@@ -127,23 +152,51 @@ export default function App() {
               </p>
             </div>
 
-            <div className="flex items-center gap-4 self-start md:self-center bg-black/40 px-4 py-3 rounded-xl border border-zinc-800">
-              <div className="text-center">
-                <span className="text-[10px] text-zinc-400 uppercase font-semibold block">Manual</span>
-                <span className="text-xl font-bold text-rose-400 font-mono">100 min</span>
+            <div className="w-full md:w-auto grid grid-cols-1 gap-3 md:min-w-[420px]">
+              <div className="bg-emerald-950/50 border-2 border-emerald-500/60 rounded-xl px-4 py-3">
+                <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                Dados <strong>REAIS</strong> — medidos nesta execução
+                </p>
+                <div className="flex items-end gap-4 mt-1.5">
+                  <div>
+                    <span className="text-2xl font-black text-emerald-300 font-mono">{runData?.total_execution_time ?? totals.changeflow_automated_total_seconds}s</span>
+                    <span className="block text-[10px] text-emerald-400/70">pipeline inteiro (cronometrado)</span>
+                  </div>
+                  <div>
+                    <span className="text-2xl font-black text-white font-mono">{runData?.report?.measured?.tests?.tests_passed ?? totals?.testsPassed ?? '—'}/{runData?.report?.measured?.tests?.tests_executed ?? totals?.testsTotal ?? '—'}</span>
+                    <span className="block text-[10px] text-emerald-400/70">testes passando</span>
+                  </div>
+                  <div>
+                    <span className="text-2xl font-black text-white font-mono">{runData?.report?.measured?.coverage_percentage ?? totals?.coverage ?? '—'}%</span>
+                    <span className="block text-[10px] text-emerald-400/70">cobertura</span>
+                  </div>
+                </div>
               </div>
-              <ChevronRight className="w-4 h-4 text-zinc-600" />
-              <div className="text-center">
-                <span className="text-[10px] text-emerald-400 uppercase font-semibold block">ChangeFlow</span>
-                <span className="text-xl font-bold text-emerald-400 font-mono">8 min</span>
-              </div>
-              <div className="w-px h-8 bg-zinc-800"></div>
-              <div className="text-center">
-                <span className="text-[10px] text-blue-400 uppercase font-semibold block">Effort Saved</span>
-                <span className="text-xl font-black text-blue-400 font-mono">-92%</span>
+              <div className="bg-blue-950/40 border-2 border-dashed border-blue-500/60 rounded-xl px-4 py-3">
+                <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.5 rounded bg-blue-500/30 text-blue-200 text-[9px] font-bold">ESTIMATIVA</span>
+                  Baseline de referência (não é medido)
+                </p>
+                <div className="flex items-end gap-4 mt-1.5">
+                  <div>
+                    <span className="text-2xl font-black text-blue-300 font-mono">-{totals.effort_saved_percentage}%</span>
+                    <span className="block text-[10px] text-blue-400/70">redução de esforço</span>
+                  </div>
+                  <div>
+                    <span className="text-2xl font-black text-blue-300 font-mono">{totals.speedup_factor}</span>
+                    <span className="block text-[10px] text-blue-400/70">speedup (100 min → 8 min)</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
+
+          {loadError && (
+            <div className="mt-4 text-xs bg-rose-950/40 border border-rose-500/40 text-rose-300 px-4 py-2 rounded-lg">
+              {loadError}
+            </div>
+          )}
         </div>
 
         {/* Pipeline Stage Stepper */}
@@ -180,6 +233,13 @@ export default function App() {
           })}
         </div>
 
+        {/* Wait: is the server alive? */}
+        {isRunning && !runData && (
+          <div className="text-center py-10 text-sm text-blue-300 animate-pulse">
+            Executando pipeline real (jest + cobertura + análise estática)... 
+          </div>
+        )}
+
         {/* Navigation Tabs */}
         <div className="flex border-b border-zinc-800 space-x-2">
           {[
@@ -187,7 +247,7 @@ export default function App() {
             { id: 'agents', label: 'Subagents Pipeline', icon: Bot },
             { id: 'impact', label: 'Impact & Blast Radius', icon: Network },
             { id: 'diff', label: 'Git Diff Inspector', icon: FileCode },
-            { id: 'benchmarks', label: 'Benchmark Data (-92%)', icon: Award }
+            { id: 'benchmarks', label: 'Benchmark Data', icon: Award }
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -212,11 +272,16 @@ export default function App() {
         <div className="space-y-6">
           {activeTab === 'overview' && (
             <div className="space-y-6">
-              <MetricsBadge />
+              <MetricsBadge benchmarkData={runData?.report} live={{
+                readiness: validation?.readiness_score,
+                coverage: tester?.coverage_percentage,
+                testsPassed: tester?.tests_passed,
+                testsTotal: tester?.tests_executed
+              }} />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <ImpactViewer />
+                <ImpactViewer impactData={runData?.agents?.analyzer?.data} />
                 <div className="space-y-6">
-                  <AgentStatus activePhase={pipelinePhase} />
+                  <AgentStatus agentsData={runData?.agents} activePhase={pipelinePhase} />
                 </div>
               </div>
             </div>
@@ -224,25 +289,30 @@ export default function App() {
 
           {activeTab === 'agents' && (
             <div className="space-y-6">
-              <AgentStatus activePhase={pipelinePhase} />
+              <AgentStatus agentsData={runData?.agents} activePhase={pipelinePhase} />
             </div>
           )}
 
           {activeTab === 'impact' && (
             <div className="space-y-6">
-              <ImpactViewer />
+              <ImpactViewer impactData={runData?.agents?.analyzer?.data} />
             </div>
           )}
 
           {activeTab === 'diff' && (
             <div className="space-y-6">
-              <DiffViewer />
+              <DiffViewer diffContent={runData?.diff} diffMeta={runData?.agents?.analyzer?.data} />
             </div>
           )}
 
           {activeTab === 'benchmarks' && (
             <div className="space-y-6">
-              <MetricsBadge />
+              <MetricsBadge benchmarkData={runData?.report} live={{
+                readiness: validation?.readiness_score,
+                coverage: tester?.coverage_percentage,
+                testsPassed: tester?.tests_passed,
+                testsTotal: tester?.tests_executed
+              }} />
             </div>
           )}
         </div>
@@ -259,8 +329,15 @@ export default function App() {
       {/* Footer */}
       <footer className="border-t border-zinc-800/60 py-6 mt-12 bg-zinc-950/60 text-center text-xs text-zinc-500">
         <p>ChangeFlow — AI-Powered Software Change Intelligence • IBM Bob 2.0 Hackathon Challenge</p>
+        {runData && (
+          <p className="mt-1 text-zinc-600">
+            Tudo medido em tempo real nesta execução: {runData.total_execution_time}s de pipeline,{' '}
+            {tester?.tests_passed ?? '-'}/{tester?.tests_executed ?? '-'} testes,{' '}
+            {tester?.coverage_percentage ?? '-'}% de cobertura medida, score do reviewer {reviewer?.score ?? '-'}/100,
+            readiness {validation?.readiness_score ?? '-'}/100.
+          </p>
+        )}
       </footer>
     </div>
   );
 }
-

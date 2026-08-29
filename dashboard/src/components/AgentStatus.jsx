@@ -15,23 +15,34 @@ import {
   Terminal
 } from 'lucide-react';
 
-export default function AgentStatus({ agentsData, activePhase }) {
-  const [expandedAgent, setExpandedAgent] = useState('02-code-reviewer');
+function buildAgents(agentsData) {
+  if (!agentsData) return [];
+  const analyzer = agentsData.analyzer || {};
+  const reviewer = agentsData.reviewer || {};
+  const documentation = agentsData.documentation || {};
+  const tester = agentsData.tester || {};
+  const validation = agentsData.validation || {};
+  const impact = analyzer.data || {};
 
-  const agents = [
+  const fmtSec = (s) => (s === undefined || s === null ? '-' : `${Number(s).toFixed(3)}s`);
+
+  return [
     {
       id: '01-change-analyzer',
       name: 'Change Analyzer Agent',
       role: 'Impact Analysis & Blast Radius',
       icon: Search,
       color: 'blue',
-      status: activePhase >= 1 ? 'COMPLETED' : 'WAITING',
-      duration: '1.2s',
-      summary: 'Parsed diff, mapped 2 modified files, 1 affected API endpoint, 2 test suites and 2 doc targets.',
+      status: analyzer.status || 'WAITING',
+      duration: fmtSec(analyzer.duration_seconds),
+      summary: impact.summary || 'No run data available yet.',
       details: {
-        blastRadius: '85.0/100 (HIGH)',
-        impactedComponents: ['payment.repository.ts', 'payment.service.ts'],
-        dependencies: 'Clean Architecture Layer 1 -> Layer 2 cascade detected.'
+        blastRadius: `${impact.blast_radius_score ?? '?'}/100 (${impact.risk_level ?? '?'})`,
+        filesChanged: impact.files_changed ?? 0,
+        impactedComponents: impact.impacted_components ?? [],
+        endpoints: (impact.affected_apis ?? []).map((a) => `${a.method} ${a.endpoint}`),
+        targetTestSuites: impact.affected_tests ?? [],
+        affectedDocs: impact.affected_docs ?? []
       }
     },
     {
@@ -40,15 +51,14 @@ export default function AgentStatus({ agentsData, activePhase }) {
       role: 'Static Security & Standards Audit',
       icon: ShieldCheck,
       color: 'emerald',
-      status: activePhase >= 2 ? 'PASSED' : (activePhase === 1 ? 'RUNNING' : 'WAITING'),
-      duration: '2.4s',
-      summary: '0 Critical, 0 High vulnerabilities. Strict parameter and currency checks verified against rules.',
+      status: reviewer.status || 'WAITING',
+      duration: fmtSec(reviewer.duration_seconds),
+      summary: reviewer.summary || 'No run data available yet.',
       details: {
-        score: '98/100',
-        findings: [
-          { severity: 'Passed', category: 'Security', msg: 'PIX currency restriction correctly bound to BRL currency' },
-          { severity: 'Info', category: 'Performance', msg: 'Fee cap Math.min evaluated in constant time O(1)' }
-        ]
+        score: `${reviewer.score ?? '?'}/100`,
+        filesScanned: reviewer.files_scanned ?? [],
+        findings: (reviewer.findings ?? []).map((f) => `${f.severity}: ${f.message} (${f.file}:${f.line})`),
+        passedChecks: (reviewer.passed_checks ?? []).map((c) => `✓ ${c.message}`)
       }
     },
     {
@@ -57,12 +67,13 @@ export default function AgentStatus({ agentsData, activePhase }) {
       role: 'Docs & OpenAPI Sync',
       icon: FileText,
       color: 'indigo',
-      status: activePhase >= 2 ? 'SYNCHRONIZED' : (activePhase === 1 ? 'RUNNING' : 'WAITING'),
-      duration: '1.8s',
-      summary: 'Automatically updated API.md with new PIX method, fee formulas, and ARCHITECTURE.md specs.',
+      status: documentation.status || 'WAITING',
+      duration: fmtSec(documentation.duration_seconds),
+      summary: `${documentation.total_doc_files_modified ?? 0} files updated, ${(documentation.new_identifiers ?? []).length} new identifiers documented.`,
       details: {
-        filesModified: ['sample-app/docs/API.md', 'sample-app/docs/ARCHITECTURE.md'],
-        schemaSync: 'OpenAPI 3.1 & Markdown schemas 100% aligned.'
+        newIdentifiers: documentation.new_identifiers ?? [],
+        updatedFiles: (documentation.docs_updated ?? []).map((u) => `${u.change_type}: ${u.file}`),
+        syncStatus: documentation.sync_status ?? 'UNKNOWN'
       }
     },
     {
@@ -71,12 +82,14 @@ export default function AgentStatus({ agentsData, activePhase }) {
       role: 'Test Generation & Runner',
       icon: FlaskConical,
       color: 'purple',
-      status: activePhase >= 2 ? 'PASSED' : (activePhase === 1 ? 'RUNNING' : 'WAITING'),
-      duration: '3.1s',
-      summary: 'Generated 3 new test scenarios, 13/13 tests passing, 98.5% branch & line coverage achieved.',
+      status: tester.status || 'WAITING',
+      duration: fmtSec(tester.execution_time_seconds ?? tester.duration_seconds),
+      summary: tester.summary || 'No run data available yet.',
       details: {
-        testSuites: ['payment.service.test.ts (8 passed)', 'payment.flow.test.ts (5 passed)'],
-        coverage: '98.5% line coverage (Threshold 80% met)'
+        tests: `${tester.tests_passed ?? 0} / ${tester.tests_executed ?? 0} passing`,
+        coverage: `${tester.coverage_percentage ?? 0}% statement coverage`,
+        coverageDetail: tester.coverage?.overall || null,
+        testSuites: (tester.test_suites ?? []).map((s) => `${s.suite.split('/').pop()} → ${s.passed} passed / ${s.failed} failed`)
       }
     },
     {
@@ -85,16 +98,57 @@ export default function AgentStatus({ agentsData, activePhase }) {
       role: 'Quality Gatekeeper & Sign-off',
       icon: Scale,
       color: 'amber',
-      status: activePhase >= 3 ? 'READY_FOR_HUMAN_REVIEW' : (activePhase === 2 ? 'RUNNING' : 'WAITING'),
-      duration: '0.9s',
-      summary: 'All automated quality gates passed. Readiness score 98/100. Benchmarked 92% effort reduction.',
+      status: validation.status || 'WAITING',
+      duration: fmtSec(validation.duration_seconds),
+      summary: validation.summary_verdict || 'No run data available yet.',
       details: {
-        readinessScore: '98 / 100',
-        gateVerdict: 'READY FOR HUMAN REVIEW',
-        effortSaved: '92 minutes saved (8 min human review vs 100 min manual)'
+        readinessScore: `${validation.readiness_score ?? '?'} / 100`,
+        checklist: validation.checklists || null,
+        gateVerdict: validation.gate_status || 'UNKNOWN',
+        savings: validation.metrics?.totals
+          ? `${validation.metrics.totals.effort_saved_percentage}% de redução (ESTIMADO, baseline de referência) · automação real medida: ${validation.metrics.totals.changeflow_automated_total_seconds}s`
+          : 'N/A'
       }
     }
   ];
+}
+
+export default function AgentStatus({ agentsData, activePhase }) {
+  const [expandedAgent, setExpandedAgent] = useState('02-code-reviewer');
+  const agents = buildAgents(agentsData);
+
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'COMPLETED':
+      case 'PASSED':
+      case 'SYNCHRONIZED':
+      case 'READY_FOR_HUMAN_REVIEW':
+        return (
+          <span className="flex items-center gap-1 text-xs font-bold text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-full border border-emerald-500/30">
+            <CheckCircle2 className="w-3.5 h-3.5" /> {status}
+          </span>
+        );
+      case 'BLOCKED':
+      case 'FAILED':
+        return (
+          <span className="flex items-center gap-1 text-xs font-bold text-rose-400 bg-rose-950/60 px-2.5 py-1 rounded-full border border-rose-500/30">
+            <AlertCircle className="w-3.5 h-3.5" /> {status}
+          </span>
+        );
+      case 'RUNNING':
+        return (
+          <span className="flex items-center gap-1 text-xs font-bold text-blue-400 bg-blue-950/60 px-2.5 py-1 rounded-full border border-blue-500/30 animate-pulse">
+            <Clock className="w-3.5 h-3.5 animate-spin" /> RUNNING...
+          </span>
+        );
+      default:
+        return (
+          <span className="flex items-center gap-1 text-xs font-medium text-zinc-500 bg-zinc-800/80 px-2.5 py-1 rounded-full">
+            {status || 'WAITING'}
+          </span>
+        );
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -113,36 +167,18 @@ export default function AgentStatus({ agentsData, activePhase }) {
         </div>
       </div>
 
+      {agents.length === 0 && (
+        <div className="glow-card rounded-xl p-6 text-sm text-zinc-400">
+          Sem dados ainda. Clique em <strong className="text-blue-400">Re-run Pipeline</strong> (o servidor
+          <code className="text-zinc-300"> /api/run </code>
+          precisa estar no ar via <code className="text-zinc-300">.venv/bin/python core/demo_server.py</code>).
+        </div>
+      )}
+
       <div className="space-y-3">
         {agents.map((agent) => {
           const Icon = agent.icon;
           const isExpanded = expandedAgent === agent.id;
-
-          const getStatusBadge = (status) => {
-            switch (status) {
-              case 'COMPLETED':
-              case 'PASSED':
-              case 'SYNCHRONIZED':
-              case 'READY_FOR_HUMAN_REVIEW':
-                return (
-                  <span className="flex items-center gap-1 text-xs font-bold text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-full border border-emerald-500/30">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> {status}
-                  </span>
-                );
-              case 'RUNNING':
-                return (
-                  <span className="flex items-center gap-1 text-xs font-bold text-blue-400 bg-blue-950/60 px-2.5 py-1 rounded-full border border-blue-500/30 animate-pulse">
-                    <Clock className="w-3.5 h-3.5 animate-spin" /> RUNNING...
-                  </span>
-                );
-              default:
-                return (
-                  <span className="flex items-center gap-1 text-xs font-medium text-zinc-500 bg-zinc-800/80 px-2.5 py-1 rounded-full">
-                    WAITING
-                  </span>
-                );
-            }
-          };
 
           return (
             <div 
@@ -183,10 +219,10 @@ export default function AgentStatus({ agentsData, activePhase }) {
                     </div>
 
                     <div className="bg-zinc-900/80 p-3 rounded-lg border border-zinc-800 space-y-1">
-                      <div className="text-[11px] font-semibold text-zinc-400 uppercase">Agent Execution Output</div>
-                      <p className="text-zinc-300 font-mono">
+                      <div className="text-[11px] font-semibold text-zinc-400 uppercase">Agent Execution Output (Real)</div>
+                      <pre className="text-zinc-300 font-mono whitespace-pre-wrap">
                         {typeof agent.details === 'object' ? JSON.stringify(agent.details, null, 1).replace(/[{}\"]/g, '') : agent.details}
-                      </p>
+                      </pre>
                     </div>
                   </div>
                 </div>
@@ -198,4 +234,3 @@ export default function AgentStatus({ agentsData, activePhase }) {
     </div>
   );
 }
-

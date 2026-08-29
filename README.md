@@ -105,30 +105,45 @@ graph TD
 
 ## 🚀 Quick Start Guide
 
+> Todos os números são reais: testes são executados via Jest com cobertura medida de
+> verdade (`--coverage`), a revisão estática varre os arquivos alterados, a documentação é
+> realmente sincronizada com o diff, e as métricas de automação são cronometradas em cada execução.
+
 ### 1. Run the Python Multi-Agent Orchestration Engine
 
 ```bash
-# Execute the full 5-agent pipeline against the sample diff
-python3 core/orchestrator.py benchmarks/sample-diff.patch
+python3 -m venv .venv                    # use the venv (stdlib-only deps, nothing to pip install)
+source .venv/bin/activate
+python core/orchestrator.py benchmarks/sample-diff.patch
 ```
 
-### 2. Run the Sample App Tests
+Resultado em `benchmarks/latest-pipeline-run.json` (com `report` de métricas medidas).
+
+### 2. Run the Sample App Tests (via the pipeline's Test Engineer)
+
+The orchestrator runs `npx jest --coverage --json` by itself. To run manually:
 
 ```bash
 cd sample-app
 npm install
-npm test
+npm test          # or: npx jest --coverage
 ```
 
-### 3. Launch the Interactive ChangeFlow Dashboard
+### 3. Launch the Interactive ChangeFlow Dashboard (real data)
 
 ```bash
+# a) start the demo API server (stdlib, no extra deps) — serves the real pipeline
+.venv/bin/python core/demo_server.py        # http://localhost:8787
+
+# b) in another terminal, run the dashboard
 cd dashboard
 npm install
 npm run dev
 ```
 
-Open `http://localhost:3000` in your browser to interact with the live dashboard, view subagent execution, inspect blast radius, and execute human-in-the-loop merge approvals.
+Open `http://localhost:3000` (ou a porta que o Vite indicar). O dashboard consome
+`/api/latest` e `/api/run` (que executa o pipeline real) através do proxy do Vite:
+impacto, revisão, cobertura, testes e métricas são todos medidos na execução atual.
 
 ---
 

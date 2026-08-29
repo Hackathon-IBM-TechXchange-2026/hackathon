@@ -1,40 +1,38 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { GitCommit, FileCode, Plus, Minus, Check } from 'lucide-react';
 
-export default function DiffViewer({ diffContent }) {
-  const defaultDiff = `diff --git a/sample-app/src/repository/payment.repository.ts b/sample-app/src/repository/payment.repository.ts
---- a/sample-app/src/repository/payment.repository.ts
-+++ b/sample-app/src/repository/payment.repository.ts
-@@ -1,3 +1,3 @@
--export type PaymentMethod = 'CREDIT_CARD' | 'DEBIT_CARD' | 'BANK_TRANSFER';
-+export type PaymentMethod = 'CREDIT_CARD' | 'DEBIT_CARD' | 'BANK_TRANSFER' | 'PIX';
- 
- export interface PaymentRecord {
-diff --git a/sample-app/src/services/payment.service.ts b/sample-app/src/services/payment.service.ts
---- a/sample-app/src/services/payment.service.ts
-+++ b/sample-app/src/services/payment.service.ts
-@@ -20,6 +20,8 @@ export class PaymentService {
-       case 'DEBIT_CARD':
-         return Number((amount * 0.015 + 0.15).toFixed(2));
-       case 'BANK_TRANSFER':
-         return Number((amount * 0.005).toFixed(2));
-+      case 'PIX':
-+        return Number(Math.min(amount * 0.0099, 3.00).toFixed(2));
-       default:
-         throw new Error(\`Unsupported payment method: \${method}\`);
-     }
-@@ -35,6 +37,9 @@ export class PaymentService {
-     if (input.amount > this.MAX_TRANSACTION_LIMIT) {
-       throw new Error(\`Amount exceeds maximum transaction limit of \${this.MAX_TRANSACTION_LIMIT}\`);
-     }
-+    if (input.method === 'PIX' && input.currency !== 'BRL') {
-+      throw new Error('PIX payment method is only supported for BRL currency');
-+    }
-     if (!this.SUPPORTED_CURRENCIES.has(input.currency.toUpperCase())) {
-       throw new Error(\`Unsupported currency: \${input.currency}\`);
-     }`;
+export default function DiffViewer({ diffContent, diffMeta }) {
+  const [fetchedDiff, setFetchedDiff] = useState(null);
+  const [loadError, setLoadError] = useState(false);
 
-  const diffText = diffContent || defaultDiff;
+  useEffect(() => {
+    if (diffContent) return;
+    fetch('/api/diff')
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data) => setFetchedDiff(data.diff))
+      .catch(() => setLoadError(true));
+  }, [diffContent]);
+
+  const diffText = diffContent || fetchedDiff;
+  const additions = diffMeta?.total_additions ?? 6;
+  const deletions = diffMeta?.total_deletions ?? 1;
+
+  if (loadError) {
+    return (
+      <div className="glow-card rounded-xl p-6 text-sm text-zinc-400">
+        Diff indisponível — suba o servidor (<code className="text-zinc-300">.venv/bin/python core/demo_server.py</code>).
+      </div>
+    );
+  }
+
+  if (!diffText) {
+    return (
+      <div className="glow-card rounded-xl p-6 text-sm text-zinc-400 animate-pulse">
+        Carregando diff real de benchmarks/sample-diff.patch...
+      </div>
+    );
+  }
+
   const lines = diffText.split('\n');
 
   return (
@@ -45,8 +43,8 @@ diff --git a/sample-app/src/services/payment.service.ts b/sample-app/src/service
           <span className="text-sm font-bold text-white">Target Change: benchmarks/sample-diff.patch</span>
         </div>
         <div className="flex items-center gap-3 text-xs font-mono">
-          <span className="text-emerald-400 flex items-center gap-0.5"><Plus className="w-3 h-3" /> 6 additions</span>
-          <span className="text-rose-400 flex items-center gap-0.5"><Minus className="w-3 h-3" /> 1 deletion</span>
+          <span className="text-emerald-400 flex items-center gap-0.5"><Plus className="w-3 h-3" /> {additions} additions</span>
+          <span className="text-rose-400 flex items-center gap-0.5"><Minus className="w-3 h-3" /> {deletions} deletions</span>
         </div>
       </div>
 
@@ -78,4 +76,3 @@ diff --git a/sample-app/src/services/payment.service.ts b/sample-app/src/service
     </div>
   );
 }
-

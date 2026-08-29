@@ -50,3 +50,8 @@ sequenceDiagram
     Controller-->>Client: HTTP JSON Response
 ```
 
+## ChangeFlow Automated Documentation Sync
+
+<!-- This section is automatically maintained by ChangeFlow -->
+- `PIX` (_new identifier from sample-app/src/repository/payment.repository.ts, sample-app/src/services/payment.service.ts_)
+
