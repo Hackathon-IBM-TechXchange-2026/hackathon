@@ -24,8 +24,50 @@ from core.runner.test_runner import TestRunner
 from core.agents.onboarding_agent import run as run_onboarding
 from core.agents.code_reviewer_agent import scan_content, Finding, build_report as build_review_report
 from core.agents.test_engineer_agent import (
-    generate_test_skeleton, self_healing_loop, estimate_coverage
+    generate_test_skeleton, self_healing_loop, estimate_coverage, bob_fixer_callback
 )
+
+
+def _load_env_file(workspace_root: str) -> None:
+    """Load .env from *workspace_root* into os.environ (idempotent, sets only missing keys)."""
+    env_path = os.path.join(workspace_root, ".env")
+    if os.path.exists(env_path):
+        with open(env_path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, val = line.partition("=")
+                    os.environ.setdefault(key.strip(), val.strip())
+
+
+def _load_bob_persona(workspace_root: str, agent_file: str) -> str:
+    """Read a .bob/agents/*.md file and return its text, or a minimal fallback."""
+    path = os.path.join(workspace_root, ".bob", "agents", agent_file)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+    except OSError:
+        return f"You are a software quality AI agent. Respond with valid JSON as requested."
+
+
+def _try_bob_complete_json(workspace_root: str, system_prompt: str, user_prompt: str) -> Optional[Dict[str, Any]]:
+    """Call Bob/watsonx.ai for a JSON response; return None on any failure so caller can fall back."""
+    _load_env_file(workspace_root)
+    try:
+        from core.bob_client import complete_json  # noqa: PLC0415
+        return complete_json(system_prompt, user_prompt)
+    except Exception:  # noqa: BLE001 — intentional broad catch for fallback path
+        return None
+
+
+def _try_bob_complete(workspace_root: str, system_prompt: str, user_prompt: str) -> Optional[str]:
+    """Call Bob/watsonx.ai for a text response; return None on any failure so caller can fall back."""
+    _load_env_file(workspace_root)
+    try:
+        from core.bob_client import complete  # noqa: PLC0415
+        return complete(system_prompt, user_prompt)
+    except Exception:  # noqa: BLE001 — intentional broad catch for fallback path
+        return None
 
 
 class ChangeFlowOrchestrator:
@@ -98,13 +140,22 @@ class ChangeFlowOrchestrator:
         }
 
     def run_code_reviewer_agent(self, impact_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Agent 02: Code Reviewer — real static analysis of changed/impacted files."""
+        """Agent 02: Code Reviewer — AI-powered semantic review (Bob/watsonx.ai) with regex pre-filter fallback."""
         self._tick("reviewer")
-        print("[02-code-reviewer] 🛡️  Running static security analysis and coding standard checks...")
+        print("[02-code-reviewer] 🛡️  Running AI-powered security and coding-standard review...")
 
-        findings = []
-        passed_checks = []
-        scanned_files = []
+        # ── Step 1: Fast regex pre-filter (always runs — catches obvious issues) ─────
+        findings: list[Dict[str, Any]] = []
+        passed_checks: list[Dict[str, Any]] = []
+        scanned_files: list[str] = []
+        file_contents: Dict[str, str] = {}
+
+        _SEVERITY_MAP = {
+            "🔴 CRITICAL": "Critical",
+            "🟠 HIGH": "High",
+            "🟡 MEDIUM": "Medium",
+            "🟢 LOW": "Low",
+        }
 
         for f in impact_data.get("files", []):
             abs_path = self.diff_parser._abs_path(f["new_path"])
@@ -112,10 +163,11 @@ class ChangeFlowOrchestrator:
                 continue
             scanned_files.append(f["new_path"])
             try:
-                with open(abs_path, "r", encoding="utf-8", errors="replace") as fh:
-                    lines = fh.read().splitlines()
+                content = Path(abs_path).read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
+            file_contents[f["new_path"]] = content
+            lines = content.splitlines()
 
             for line_idx, line in enumerate(lines, start=1):
                 if len(line) > 120:
@@ -128,32 +180,16 @@ class ChangeFlowOrchestrator:
                                          "message": rule["message"],
                                          "suggestion": f"Review {f['new_path']}:{line_idx}"})
 
-            # Real positive verifications: new defensive guards added by the change.
+            # Positive verifications: defensive guards introduced by the change.
             for changed in f.get("changed_lines", []):
                 if re.match(r"^\s*if\s*\(.*\bthrow\b", changed) or re.search(r"\bthrow\s+new\s+Error", changed):
                     passed_checks.append({"file": f["new_path"], "severity": "Passed",
                                           "category": "Validation",
                                           "message": changed.strip()})
 
-        # --- Augmentation: specialist Code Reviewer Agent (richer rule set) ---
-        _SEVERITY_MAP = {
-            "🔴 CRITICAL": "Critical",
-            "🟠 HIGH": "High",
-            "🟡 MEDIUM": "Medium",
-            "🟢 LOW": "Low",
-        }
-        existing_keys = {(item["file"], item["line"]) for item in findings}
-        agent_findings_objs: list[Finding] = []
-        for f in impact_data.get("files", []):
-            abs_path = self.diff_parser._abs_path(f["new_path"])
-            if not os.path.exists(abs_path):
-                continue
-            try:
-                content = Path(abs_path).read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                continue
+            # Python-specific: richer RULES from code_reviewer_agent (kept as fallback)
+            existing_keys = {(item["file"], item["line"]) for item in findings}
             for finding in scan_content(f["new_path"], content):
-                agent_findings_objs.append(finding)
                 key = (finding.file, finding.line)
                 if key not in existing_keys:
                     existing_keys.add(key)
@@ -166,13 +202,69 @@ class ChangeFlowOrchestrator:
                         "suggestion": finding.suggested_fix,
                     })
 
+        # ── Step 2: Bob/watsonx.ai semantic review (authoritative findings) ──────────
+        bob_findings: list[Dict[str, Any]] = []
+        bob_score: Optional[int] = None
+        bob_markdown: Optional[str] = None
+        bob_basis = "ai"
+
+        if scanned_files and file_contents:
+            diff_context = "\n\n".join(
+                f"### {path}\n```\n{content[:4000]}\n```"
+                for path, content in list(file_contents.items())[:5]  # cap to 5 files to stay within token limits
+            )
+            system_prompt = _load_bob_persona(self.workspace_root, "02-code-reviewer.md")
+            user_prompt = (
+                f"Review the following changed files and return your structured JSON findings.\n\n"
+                f"{diff_context}\n\n"
+                f"Return a JSON block with keys: status, score, summary, findings (array of "
+                f"{{file, line, severity, category, message, suggestion}})."
+            )
+            bob_response = _try_bob_complete_json(self.workspace_root, system_prompt, user_prompt)
+            if bob_response:
+                # Bob's findings are the authoritative list — replace regex findings for scanned files
+                raw_bob_findings = bob_response.get("findings", [])
+                if raw_bob_findings:
+                    bob_findings = [
+                        {
+                            "file": str(item.get("file", "")),
+                            "line": int(item.get("line", 0)),
+                            "severity": str(item.get("severity", "Low")),
+                            "category": str(item.get("category", "General")),
+                            "message": str(item.get("message", "")),
+                            "suggestion": str(item.get("suggestion", "")),
+                        }
+                        for item in raw_bob_findings
+                        if isinstance(item, dict)
+                    ]
+                    findings = bob_findings  # Bob output is authoritative
+                bob_score = bob_response.get("score")
+                bob_markdown = bob_response.get("summary", "")
+            else:
+                bob_basis = "fallback_regex"
+
+        # ── Step 3: Compute score and status ──────────────────────────────────────────
         severity_weights = {"Info": 1, "Low": 5, "Medium": 10, "High": 30, "Critical": 50}
         total_deduction = sum(severity_weights.get(item["severity"], 0) for item in findings)
-        score = max(0, 100 - total_deduction) if scanned_files else 0
+        computed_score = max(0, 100 - total_deduction) if scanned_files else 0
+        score = bob_score if bob_score is not None else computed_score
 
-        critical_count = sum(1 for x in findings if x["severity"] == "Critical")
-        high_count = sum(1 for x in findings if x["severity"] == "High")
+        critical_count = sum(1 for x in findings if x["severity"] in ("Critical", "CRITICAL"))
+        high_count = sum(1 for x in findings if x["severity"] in ("High", "HIGH"))
         status = "PASSED" if scanned_files and critical_count == 0 and high_count == 0 else "FAILED"
+
+        # Build per-agent Finding objects for the fallback markdown (when Bob unavailable)
+        agent_findings_objs: list[Finding] = [
+            Finding(
+                severity=_SEVERITY_MAP.get(str(item.get("severity", "Low")), str(item.get("severity", "Low"))),
+                file=str(item.get("file", "")),
+                line=int(item.get("line", 0)),
+                description=str(item.get("message", "")),
+                snippet=str(item.get("suggestion", "")),
+                suggested_fix="",
+            )
+            for item in findings
+        ]
 
         return {
             "agent": "02-code-reviewer",
@@ -182,9 +274,11 @@ class ChangeFlowOrchestrator:
             "files_scanned": scanned_files,
             "findings": findings,
             "passed_checks": passed_checks,
+            "basis": bob_basis,
             "summary": (f"Scanned {len(scanned_files)} file(s): {critical_count} Critical, {high_count} High, "
-                        f"{len(findings)} total findings, {len(passed_checks)} defense guards verified."),
-            "agent_report_markdown": build_review_report(agent_findings_objs),
+                        f"{len(findings)} total findings, {len(passed_checks)} defense guards verified. "
+                        f"(basis: {bob_basis})"),
+            "agent_report_markdown": build_review_report(agent_findings_objs, bob_markdown=bob_markdown),
         }
 
     def run_documentation_agent(self, analyzer_res: Dict[str, Any]) -> Dict[str, Any]:
@@ -307,41 +401,112 @@ class ChangeFlowOrchestrator:
 
     def run_test_engineer_agent(self, impact_data: Dict[str, Any]) -> Dict[str, Any]:
         """Agent 04: Test Engineer — executes the real Jest test suite with coverage,
-        augmented with AST-based PyTest skeleton generation and self-healing loop."""
+        generates missing TypeScript test stubs via Bob/watsonx.ai, and runs AST-based
+        PyTest skeleton generation + AI self-healing loop for Python files."""
         self._tick("tester")
-        print("[04-test-engineer] 🧪 Generating missing test scenarios and executing test suites...")
+        print("[04-test-engineer] 🧪 Detecting missing tests, generating stubs, executing suites...")
+
+        test_system_prompt = _load_bob_persona(self.workspace_root, "04-test-engineer.md")
+        skeletons_generated: list[Dict[str, Any]] = []
+        self_healing_results: list[Dict[str, Any]] = []
+        coverage_estimates: list[float] = []
+
+        # ── Sub-Task 4: TypeScript new-file test generation ───────────────────────────
+        ts_tests_dir = os.path.join(self.workspace_root, "sample-app", "tests", "unit")
+        ts_src_base = os.path.join(self.workspace_root, "sample-app", "src")
+
+        for f in impact_data.get("files", []):
+            new_path: str = f["new_path"]
+            if not new_path.endswith(".ts"):
+                continue
+            # Only consider files under sample-app/src/
+            abs_src = self.diff_parser._abs_path(new_path)
+            if not abs_src.startswith(ts_src_base):
+                continue
+            if not os.path.exists(abs_src):
+                continue
+
+            stem = Path(abs_src).stem
+            expected_test = os.path.join(ts_tests_dir, f"{stem}.test.ts")
+
+            if os.path.exists(expected_test):
+                continue  # Test already exists — nothing to generate
+
+            print(f"[04-test-engineer] 📝 Generating Jest tests for new file: {new_path}")
+            try:
+                source_content = Path(abs_src).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+
+            user_prompt = (
+                f"Generate a complete Jest + TypeScript unit test file for the following source file.\n\n"
+                f"**Source file:** `{new_path}`\n\n"
+                f"```typescript\n{source_content[:6000]}\n```\n\n"
+                f"Requirements:\n"
+                f"- Use Jest with TypeScript (no static setTimeout delays).\n"
+                f"- Cover all exported functions/classes with at least one positive and one edge-case test.\n"
+                f"- Use dynamic polling assertions where async behaviour is involved.\n"
+                f"- Return ONLY the test file content inside a single ```typescript ... ``` code fence.\n"
+                f"- The output test file will be saved to `sample-app/tests/unit/{stem}.test.ts`."
+            )
+            generated_text = _try_bob_complete(self.workspace_root, test_system_prompt, user_prompt)
+            if generated_text:
+                fence_match = re.search(r"```(?:typescript|ts)?\s*([\s\S]+?)```", generated_text)
+                test_content = fence_match.group(1).strip() if fence_match else generated_text.strip()
+                if test_content:
+                    os.makedirs(ts_tests_dir, exist_ok=True)
+                    Path(expected_test).write_text(test_content, encoding="utf-8")
+                    skeletons_generated.append({
+                        "file": new_path,
+                        "generated_test": os.path.relpath(expected_test, self.workspace_root),
+                        "source": "bob_ai",
+                    })
+
+        # ── Run Jest (includes any newly written .test.ts files) ─────────────────────
         test_results = self.test_runner.run_tests()
         test_results["duration_seconds"] = self._elapsed("tester")
         test_results["agent"] = "04-test-engineer"
 
-        # --- Augmentation: specialist Test Engineer Agent (Python AST + self-healing) ---
-        skeletons_generated = []
-        self_healing_results = []
-        coverage_estimates = []
-
+        # ── Python AST skeleton generation + AI self-healing ─────────────────────────
         for f in impact_data.get("files", []):
             abs_path = self.diff_parser._abs_path(f["new_path"])
             if not abs_path.endswith(".py") or not os.path.exists(abs_path):
                 continue
 
-            # Generate PyTest skeleton via AST
             skeleton = generate_test_skeleton(Path(abs_path))
-            skeletons_generated.append({"file": f["new_path"], "skeleton": skeleton})
-
-            # Estimate coverage for this module against the generated skeleton
+            skeletons_generated.append({"file": f["new_path"], "skeleton": skeleton, "source": "ast"})
             coverage_estimates.append(estimate_coverage(Path(abs_path), skeleton))
 
-            # Self-healing loop — only if conventional test file already exists
             stem = Path(abs_path).stem
             test_path = Path(self.workspace_root) / "tests" / f"test_{stem}.py"
             if test_path.exists():
-                healing = self_healing_loop(test_path)
+                healing = self_healing_loop(test_path, fixer_callback=bob_fixer_callback)
                 self_healing_results.append({"file": f["new_path"], "result": healing})
 
         python_coverage_estimate = (
             round(sum(coverage_estimates) / len(coverage_estimates), 1)
             if coverage_estimates else 0.0
         )
+
+        # ── Sub-Task 5: Ask Bob for a narrative test report ───────────────────────────
+        test_report_markdown: Optional[str] = None
+        metrics_summary = {
+            "tests_executed": test_results.get("tests_executed", 0),
+            "tests_passed": test_results.get("tests_passed", 0),
+            "tests_failed": test_results.get("tests_failed", 0),
+            "coverage_percentage": test_results.get("coverage_percentage", 0.0),
+            "ts_stubs_generated": len([s for s in skeletons_generated if s.get("source") == "bob_ai"]),
+            "self_healing_attempts": len(self_healing_results),
+        }
+        tr_user_prompt = (
+            f"Write a concise test execution report (Markdown) for the following test run metrics.\n\n"
+            f"```json\n{json.dumps(metrics_summary, indent=2)}\n```\n\n"
+            f"Include: overall status, tests passed/total, coverage %, number of AI-generated stubs, "
+            f"self-healing iterations. Keep it under 300 words. Use Markdown headers and bullet points."
+        )
+        bob_tr = _try_bob_complete(self.workspace_root, test_system_prompt, tr_user_prompt)
+        if bob_tr and bob_tr.strip():
+            test_report_markdown = bob_tr
 
         return {
             "agent": "04-test-engineer",
@@ -358,10 +523,11 @@ class ChangeFlowOrchestrator:
             "skeletons_generated": skeletons_generated,
             "self_healing_results": self_healing_results,
             "python_coverage_estimate": python_coverage_estimate,
+            "test_report_markdown": test_report_markdown,
         }
 
     def run_validation_agent(self, analyzer_res, reviewer_res, doc_res, test_res) -> Dict[str, Any]:
-        """Agent 05: Validation Agent — real quality gate + metrics from measured data."""
+        """Agent 05: Validation Agent — real quality gate + Bob-synthesized summary verdict."""
         self._tick("validator")
         print("[05-validation-agent] ⚖️  Synthesizing results and calculating effort reduction metrics...")
 
@@ -389,9 +555,40 @@ class ChangeFlowOrchestrator:
 
         metrics = self._compute_metrics(analyzer_res, reviewer_res, doc_res, test_res, readiness_score)
 
-        verdict = (f"Modified-file coverage {modified_coverage_pct}% (gate >= 90%), "
-                   f"{test_res.get('tests_passed', 0)}/{test_res.get('tests_executed', 0)} tests passing, "
-                   f"reviewer score {reviewer_score}/100, docs {doc_res.get('sync_status', 'UNKNOWN')}.")
+        # ── Sub-Task 5: Ask Bob for the synthesized summary_verdict ──────────────────
+        fallback_verdict = (
+            f"Modified-file coverage {modified_coverage_pct}% (gate >= 90%), "
+            f"{test_res.get('tests_passed', 0)}/{test_res.get('tests_executed', 0)} tests passing, "
+            f"reviewer score {reviewer_score}/100, docs {doc_res.get('sync_status', 'UNKNOWN')}."
+        )
+        aggregated_metrics = {
+            "gate_status": gate_status,
+            "readiness_score": readiness_score,
+            "reviewer_score": reviewer_score,
+            "tests_passed": test_res.get("tests_passed", 0),
+            "tests_executed": test_res.get("tests_executed", 0),
+            "coverage_percentage": coverage_pct,
+            "modified_file_coverage": modified_coverage_pct,
+            "docs_sync_status": doc_res.get("sync_status", "UNKNOWN"),
+            "critical_findings": sum(1 for x in reviewer_res.get("findings", []) if x.get("severity") in ("Critical", "CRITICAL")),
+            "high_findings": sum(1 for x in reviewer_res.get("findings", []) if x.get("severity") in ("High", "HIGH")),
+            "checklists": {
+                "impact_analysis": "PASSED",
+                "code_review": "PASSED" if reviewer_ok else "FAILED",
+                "doc_sync": "PASSED" if docs_ok else "FAILED",
+                "test_execution": "PASSED" if tests_ok and coverage_ok else "FAILED",
+            },
+        }
+        validation_system_prompt = _load_bob_persona(self.workspace_root, "05-validation-agent.md")
+        val_user_prompt = (
+            f"Write a concise executive summary verdict (2-3 sentences, plain text) for the following "
+            f"pipeline quality gate results. Gate status: {gate_status}. Readiness score: {readiness_score}/100.\n\n"
+            f"```json\n{json.dumps(aggregated_metrics, indent=2)}\n```\n\n"
+            f"Be specific: mention test pass rate, coverage, critical vulnerabilities, and doc sync status. "
+            f"End with whether the change is ready for human review or blocked and why."
+        )
+        bob_verdict = _try_bob_complete(self.workspace_root, validation_system_prompt, val_user_prompt)
+        summary_verdict = bob_verdict.strip() if bob_verdict and bob_verdict.strip() else fallback_verdict
 
         return {
             "agent": "05-validation-agent",
@@ -400,7 +597,7 @@ class ChangeFlowOrchestrator:
             "readiness_score": readiness_score,
             "duration_seconds": self._elapsed("validator"),
             "metrics": metrics,
-            "summary_verdict": verdict,
+            "summary_verdict": summary_verdict,
             "checklists": {
                 "impact_analysis": "PASSED",
                 "code_review": "PASSED" if reviewer_ok else "FAILED",

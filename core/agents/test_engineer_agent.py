@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -146,12 +147,75 @@ def run_tests(test_path: Path, timeout: int = TEST_TIMEOUT_SECONDS) -> TestRunRe
 
 FixerCallback = Callable[[str, TestRunResult], None]
 """Assinatura do callback de correção: recebe (caminho_do_teste, resultado_da_execução)
-e deve alterar o arquivo de teste ou o código-fonte em disco. Na integração real,
-isso é o Bob (ou watsonx.ai) lendo o traceback e reescrevendo o arquivo problemático."""
+e deve alterar o arquivo de teste ou o código-fonte em disco."""
+
+
+def _load_env_file() -> None:
+    """Load .env from the project root if present (for standalone usage)."""
+    env_path = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+    env_path = os.path.normpath(env_path)
+    if os.path.exists(env_path):
+        with open(env_path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, val = line.partition("=")
+                    os.environ.setdefault(key.strip(), val.strip())
+
+
+def bob_fixer_callback(test_path: str, result: TestRunResult) -> None:
+    """AI-powered self-healing callback.
+
+    Reads the failing test file and the traceback from *result*, sends both
+    to Bob/watsonx.ai via the test-engineer persona, parses the corrected test
+    code from the response, and writes it back to *test_path*.
+    """
+    _load_env_file()
+    # Import here to keep the module importable even without watsonx credentials
+    from core.bob_client import complete, BobClientError  # noqa: PLC0415
+
+    system_prompt_path = os.path.normpath(
+        os.path.join(os.path.dirname(__file__), "..", "..", ".bob", "agents", "04-test-engineer.md")
+    )
+    try:
+        with open(system_prompt_path, encoding="utf-8") as fh:
+            system_prompt = fh.read()
+    except OSError:
+        system_prompt = "You are a test automation engineer. Fix the failing test file."
+
+    try:
+        test_content = Path(test_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return  # Cannot read file — cannot fix it
+
+    traceback = (result.stderr or result.stdout)[-3000:]
+    user_prompt = (
+        f"The following test file is failing. Fix it so all tests pass.\n\n"
+        f"**Test file path:** `{test_path}`\n\n"
+        f"**Current test file content:**\n```\n{test_content}\n```\n\n"
+        f"**Failure traceback:**\n```\n{traceback}\n```\n\n"
+        f"Return ONLY the corrected test file content inside a single fenced code block "
+        f"(```typescript or ```python). Do not include any explanation outside the code fence."
+    )
+
+    try:
+        response = complete(system_prompt, user_prompt)
+    except BobClientError:
+        return  # Silently degrade — outer loop will detect no improvement
+
+    # Extract code from first fenced block
+    fence_match = re.search(r"```(?:\w+)?\s*([\s\S]+?)```", response)
+    if fence_match:
+        corrected = fence_match.group(1).strip()
+        Path(test_path).write_text(corrected, encoding="utf-8")
 
 
 def self_healing_loop(test_path: Path, fixer_callback: Optional[FixerCallback] = None,
                        max_iterations: int = MAX_ITERATIONS) -> dict:
+    # Default to the AI-powered fixer when no callback is explicitly provided
+    if fixer_callback is None:
+        fixer_callback = bob_fixer_callback
+
     iterations = []
 
     for i in range(1, max_iterations + 1):
@@ -166,15 +230,9 @@ def self_healing_loop(test_path: Path, fixer_callback: Optional[FixerCallback] =
         if result.passed:
             break
 
-        if fixer_callback is None:
-            iterations[-1]["note"] = ("Nenhum fixer_callback configurado — em produção, "
-                                       "aqui entraria a chamada ao Bob/watsonx.ai para corrigir o código.")
-            break
-
         fixer_callback(str(test_path), result)
 
     final_status = iterations[-1]["status"] if iterations else "UNKNOWN"
-    escaped_iterations = i if 'i' in dir() else 0
 
     if final_status == "FAIL" and len(iterations) >= max_iterations:
         escalation = ("Não foi possível resolver as falhas de teste após "
@@ -202,7 +260,16 @@ def estimate_coverage(module_path: Path, test_content: str) -> float:
 # --------------------------------------------------------------------------
 
 def build_report(module_path: Path, test_skeleton: str, healing_result: Optional[dict],
-                  coverage_pct: float) -> str:
+                  coverage_pct: float, bob_markdown: Optional[str] = None) -> str:
+    """Build the test report markdown.
+
+    When *bob_markdown* is provided (from a successful Bob/watsonx.ai call) it is
+    returned directly as the authoritative narrative.  The static template is used
+    only as a structural fallback.
+    """
+    if bob_markdown and bob_markdown.strip():
+        return bob_markdown
+
     iterations_md = ""
     if healing_result:
         for it in healing_result["iterations"]:

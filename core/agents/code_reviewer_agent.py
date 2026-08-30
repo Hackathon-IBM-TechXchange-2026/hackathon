@@ -152,9 +152,41 @@ def get_git_diff_files(repo_path: str = ".") -> list[str]:
 # 4. Relatório
 # --------------------------------------------------------------------------
 
-def build_report(findings: list[Finding]) -> str:
-    counts = {s: 0 for s in SEVERITY_ORDER}
+# Normalise plain-text severities (e.g. "Medium" from Bob) to emoji-prefixed keys
+_SEVERITY_NORMALIZE: dict[str, str] = {
+    "critical": CRITICAL,
+    "high": HIGH,
+    "medium": MEDIUM,
+    "low": LOW,
+    "info": LOW,
+    "passed": LOW,
+}
+
+
+def _normalize_severity(sev: str) -> str:
+    """Return the canonical emoji-prefixed severity key, falling back to LOW."""
+    return _SEVERITY_NORMALIZE.get(sev.lower(), sev if sev in SEVERITY_ORDER else LOW)
+
+
+def build_report(findings: list[Finding], bob_markdown: str | None = None) -> str:
+    """Build the code review markdown report.
+
+    When *bob_markdown* is provided (from a successful Bob/watsonx.ai call) it is
+    returned directly as the authoritative narrative.  The regex-derived table is
+    used only as a structural fallback so the report is always non-empty.
+    """
+    if bob_markdown and bob_markdown.strip():
+        return bob_markdown
+
+    # Normalise severities so counts never KeyError on plain-text values from Bob
+    import dataclasses as _dc
+    normalised: list[Finding] = []
     for f in findings:
+        sev = _normalize_severity(f.severity)
+        normalised.append(_dc.replace(f, severity=sev) if sev != f.severity else f)
+
+    counts = {s: 0 for s in SEVERITY_ORDER}
+    for f in normalised:
         counts[f.severity] += 1
 
     status = {
@@ -169,7 +201,7 @@ def build_report(findings: list[Finding]) -> str:
     )
 
     details = []
-    for i, f in enumerate(sorted(findings, key=lambda x: SEVERITY_ORDER.index(x.severity)), 1):
+    for i, f in enumerate(sorted(normalised, key=lambda x: SEVERITY_ORDER.index(x.severity)), 1):
         details.append(
             f"### {i}. {f.severity} — `{f.file}:{f.line}`\n"
             f"**Descrição:** {f.description}\n\n"
