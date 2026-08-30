@@ -12,17 +12,21 @@ import json
 from typing import Dict, Any, Optional
 
 class TestRunner:
-    def __init__(self, workspace_root: Optional[str] = None):
+    def __init__(self, workspace_root: Optional[str] = None, app_dir: Optional[str] = None):
         self.workspace_root = workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-        self.sample_app_dir = os.path.join(self.workspace_root, "sample-app")
+        # app_dir can be an absolute path or a path relative to workspace_root
+        if app_dir:
+            self.sample_app_dir = app_dir if os.path.isabs(app_dir) else os.path.join(self.workspace_root, app_dir)
+        else:
+            self.sample_app_dir = os.path.join(self.workspace_root, "sample-app")
 
     def run_tests(self) -> Dict[str, Any]:
-        """Executes Jest tests with coverage in the sample-app directory and parses the real output."""
+        """Executes Jest tests with coverage in the app directory and parses the real output."""
         start_time = time.time()
 
         has_node_modules = os.path.exists(os.path.join(self.sample_app_dir, "node_modules"))
         if not has_node_modules:
-            return self._failure("node_modules not installed. Run `npm install` inside sample-app.")
+            return self._failure(f"node_modules not installed. Run `npm install` inside {self.sample_app_dir}.")
 
         try:
             cmd = ["npx", "jest", "--coverage", "--json", "--colors=false"]

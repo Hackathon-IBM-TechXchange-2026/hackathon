@@ -89,11 +89,25 @@ class ChangeFlowOrchestrator:
          "message": "Unresolved marker comment"},
     ]
 
-    def __init__(self, workspace_root: Optional[str] = None):
+    def __init__(self, workspace_root: Optional[str] = None, app_dir: Optional[str] = None):
         self.workspace_root = workspace_root or os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         self.diff_parser = DiffParser(self.workspace_root)
-        self.test_runner = TestRunner(self.workspace_root)
+        self.test_runner = TestRunner(self.workspace_root, app_dir=app_dir)
         self.timings: Dict[str, float] = {}
+
+    def _detect_app_dir(self, patch_path: str) -> Optional[str]:
+        """Infer the app directory from the first changed file in the patch."""
+        try:
+            impact = self.diff_parser.parse_patch_file(patch_path)
+            for f in impact.get("files", []):
+                parts = Path(f["new_path"]).parts
+                if len(parts) >= 1:
+                    candidate = os.path.join(self.workspace_root, parts[0])
+                    if os.path.isdir(candidate) and os.path.exists(os.path.join(candidate, "package.json")):
+                        return candidate
+        except Exception:  # noqa: BLE001
+            pass
+        return None
 
     # ------------------------------------------------------------------ utils
 
@@ -696,6 +710,13 @@ class ChangeFlowOrchestrator:
         """Executes the full multi-agent ChangeFlow pipeline."""
         self._pipeline_start = time.time()
         start_time = self._pipeline_start
+
+        # Auto-detect app directory from the patch so the correct Jest suite is executed
+        detected_app = self._detect_app_dir(patch_path)
+        if detected_app and detected_app != self.test_runner.sample_app_dir:
+            self.test_runner = TestRunner(self.workspace_root, app_dir=detected_app)
+            print(f"[orchestrator] Detected app directory: {os.path.relpath(detected_app, self.workspace_root)}")
+
         print("\n=======================================================")
         print("🚀 Starting ChangeFlow AI Multi-Agent Pipeline (IBM Bob 2.0)")
         print("=======================================================\n")

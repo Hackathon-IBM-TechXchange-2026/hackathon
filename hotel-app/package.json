@@ -1,0 +1,19 @@
+{
+  "name": "changeflow-hotel-app",
+  "version": "1.0.0",
+  "description": "Hotel Booking Service Application for ChangeFlow Demonstration",
+  "main": "dist/controllers/hotel.controller.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest --colors --verbose",
+    "test:coverage": "jest --coverage"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.11.24",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "typescript": "^5.3.3"
+  }
+}
