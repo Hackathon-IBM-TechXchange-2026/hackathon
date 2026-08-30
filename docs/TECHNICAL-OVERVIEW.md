@@ -164,3 +164,19 @@ Se o objetivo for transformar esse projeto em um produto de mercado, as principa
 O ChangeFlow prova um conceito real e valioso: **é possível automatizar 92% do trabalho de revisão de código com IA** e fazer isso de forma que os resultados sejam genuinamente úteis (não apenas simulados). O código funciona, os testes rodam de verdade, as métricas são medidas, e a IA gera análises reais.
 
 As limitações existem e são honestas — é um MVP de hackathon, não um produto SaaS maduro. Mas a arquitetura está correta, os conceitos estão validados, e o caminho para evolução está claro.
+
+## ChangeFlow Automated Documentation Sync
+
+<!-- This section is automatically maintained by ChangeFlow -->
+- `Loyalty` (_new identifier from hotel-app/src/repository/hotel.repository.ts, hotel-app/src/services/hotel.service.ts_)
+
+- `confirmed` (_new identifier from hotel-app/src/repository/hotel.repository.ts, hotel-app/src/services/hotel.service.ts_)
+
+- `confirmedCount` (_new identifier from hotel-app/src/repository/hotel.repository.ts, hotel-app/src/services/hotel.service.ts_)
+
+- `discount` (_new identifier from hotel-app/src/repository/hotel.repository.ts, hotel-app/src/services/hotel.service.ts_)
+
+- `discountedBaseRate` (_new identifier from hotel-app/src/repository/hotel.repository.ts, hotel-app/src/services/hotel.service.ts_)
+
+- `guests` (_new identifier from hotel-app/src/repository/hotel.repository.ts, hotel-app/src/services/hotel.service.ts_)
+

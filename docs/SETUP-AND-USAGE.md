@@ -325,3 +325,19 @@ cat benchmarks/latest-pipeline-run.json
 | `node_modules not installed` | `npm install` não foi rodado | `cd meu-projeto && npm install` |
 | `jest did not return parseable JSON` | Jest não suporta `--json` ou tem reporter customizado | Verificar `jest.config.js` do projeto |
 | `Patch file not found` | Caminho errado para o .patch | Confirmar que o arquivo está em `benchmarks/` |
+
+## ChangeFlow Automated Documentation Sync
+
+<!-- This section is automatically maintained by ChangeFlow -->
+- `Loyalty` (_new identifier from hotel-app/src/repository/hotel.repository.ts, hotel-app/src/services/hotel.service.ts_)
+
+- `confirmed` (_new identifier from hotel-app/src/repository/hotel.repository.ts, hotel-app/src/services/hotel.service.ts_)
+
+- `confirmedCount` (_new identifier from hotel-app/src/repository/hotel.repository.ts, hotel-app/src/services/hotel.service.ts_)
+
+- `discount` (_new identifier from hotel-app/src/repository/hotel.repository.ts, hotel-app/src/services/hotel.service.ts_)
+
+- `discountedBaseRate` (_new identifier from hotel-app/src/repository/hotel.repository.ts, hotel-app/src/services/hotel.service.ts_)
+
+- `guests` (_new identifier from hotel-app/src/repository/hotel.repository.ts, hotel-app/src/services/hotel.service.ts_)
+
