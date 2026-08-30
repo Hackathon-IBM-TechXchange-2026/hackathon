@@ -1,0 +1,343 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  Bot, 
+  Layers, 
+  Play, 
+  RotateCcw, 
+  GitPullRequest, 
+  ShieldCheck, 
+  CheckCircle2, 
+  TrendingDown, 
+  FileCode, 
+  Clock, 
+  Network, 
+  Award,
+  Sparkles,
+  ExternalLink,
+  ChevronRight
+} from 'lucide-react';
+
+import ImpactViewer from './components/ImpactViewer';
+import AgentStatus from './components/AgentStatus';
+import MetricsBadge from './components/MetricsBadge';
+import DiffViewer from './components/DiffViewer';
+import HumanApprovalModal from './components/HumanApprovalModal';
+
+const DEFAULT_TOTALS = {
+  traditional_human_minutes: 100,
+  changeflow_human_minutes: 8,
+  effort_saved_percentage: 92.0,
+  changeflow_automated_total_seconds: 0
+};
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState('overview');
+  const [pipelinePhase, setPipelinePhase] = useState(0); // 0: Idle, 1: Analyzer, 2: Parallel, 3: Gatekeeper, 4: Merged
+  const [isRunning, setIsRunning] = useState(true);
+  const [runData, setRunData] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [isApprovalOpen, setIsApprovalOpen] = useState(false);
+  const [isApproved, setIsApproved] = useState(false);
+  const [approvalNote, setApprovalNote] = useState('');
+
+  const runPipeline = useCallback(async (fresh = true) => {
+    setIsRunning(true);
+    setIsApproved(false);
+    setPipelinePhase(0);
+    setLoadError(null);
+    try {
+      const res = await fetch(fresh ? '/api/run' : '/api/latest', {
+        method: fresh ? 'POST' : 'GET',
+        headers: fresh ? { 'Content-Type': 'application/json' } : undefined
+      });
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const data = await res.json();
+      setRunData(data);
+      setPipelinePhase(data.pipeline_status === 'READY_FOR_HUMAN_REVIEW' ? 3 : 3);
+    } catch (err) {
+      setLoadError(`Não foi possível conectar ao pipeline. Rode primeiro: .venv/bin/python core/demo_server.py (${err.message})`);
+    } finally {
+      setIsRunning(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    runPipeline(true);
+  }, [runPipeline]);
+
+  const handleApprove = (note) => {
+    setIsApproved(true);
+    setApprovalNote(note || 'Approved by Lead Engineer via ChangeFlow Portal.');
+    setPipelinePhase(4);
+  };
+
+  const totals = runData?.report?.totals || DEFAULT_TOTALS;
+  const reviewer = runData?.agents?.reviewer || null;
+  const tester = runData?.agents?.tester || null;
+  const validation = runData?.agents?.validation || null;
+
+  return (
+    <div className="min-h-screen bg-[#0c0d0f] text-zinc-100 flex flex-col">
+      {/* Top Navbar */}
+      <header className="border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-gradient-to-tr from-blue-600 to-indigo-500 rounded-xl shadow-lg shadow-blue-500/20 text-white font-black">
+              <Bot className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-lg tracking-tight text-white">ChangeFlow</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded-full">
+                  IBM Bob 2.0
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-400 font-normal">AI-Powered Software Change Intelligence</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => runPipeline(true)}
+              disabled={isRunning}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                isRunning 
+                  ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 hover:border-zinc-600'
+              }`}
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${isRunning ? 'animate-spin' : ''}`} />
+              Re-run Pipeline
+            </button>
+
+            <button
+              onClick={() => setIsApprovalOpen(true)}
+              disabled={!runData || isRunning}
+              className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-md ${
+                isApproved
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                  : runData
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white glow-blue'
+                  : 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed'
+              }`}
+            >
+              {isApproved ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Merged to Main
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="w-4 h-4" /> Human Sign-Off Gate
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        {/* Banner with Value Proposition */}
+        <div className="glow-card rounded-2xl p-6 relative overflow-hidden bg-gradient-to-r from-blue-950/30 via-zinc-900/60 to-purple-950/20 border border-blue-500/20">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1 max-w-2xl">
+              <div className="flex items-center gap-2 text-xs font-bold text-blue-400 uppercase tracking-wider">
+                <Sparkles className="w-4 h-4" /> Hackathon IBM Dev Day — IBM Bob 2.0
+              </div>
+              <h2 className="text-2xl font-black text-white tracking-tight">
+                From Code Change to Production-Ready Change.
+              </h2>
+              <p className="text-xs sm:text-sm text-zinc-300">
+                Toda alteração de código encadeia um efeito cascata. O ChangeFlow orquestra subagentes em paralelo para análise de impacto, revisão estática, sincronização documental e testes automáticos — preservando a decisão final humana.
+              </p>
+            </div>
+
+            <div className="w-full md:w-auto grid grid-cols-1 gap-3 md:min-w-[420px]">
+              <div className="bg-emerald-950/50 border-2 border-emerald-500/60 rounded-xl px-4 py-3">
+                <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                Dados <strong>REAIS</strong> — medidos nesta execução
+                </p>
+                <div className="flex items-end gap-4 mt-1.5">
+                  <div>
+                    <span className="text-2xl font-black text-emerald-300 font-mono">{runData?.total_execution_time ?? totals.changeflow_automated_total_seconds}s</span>
+                    <span className="block text-[10px] text-emerald-400/70">pipeline inteiro (cronometrado)</span>
+                  </div>
+                  <div>
+                    <span className="text-2xl font-black text-white font-mono">{runData?.report?.measured?.tests?.tests_passed ?? totals?.testsPassed ?? '—'}/{runData?.report?.measured?.tests?.tests_executed ?? totals?.testsTotal ?? '—'}</span>
+                    <span className="block text-[10px] text-emerald-400/70">testes passando</span>
+                  </div>
+                  <div>
+                    <span className="text-2xl font-black text-white font-mono">{runData?.report?.measured?.coverage_percentage ?? totals?.coverage ?? '—'}%</span>
+                    <span className="block text-[10px] text-emerald-400/70">cobertura</span>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-blue-950/40 border-2 border-dashed border-blue-500/60 rounded-xl px-4 py-3">
+                <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.5 rounded bg-blue-500/30 text-blue-200 text-[9px] font-bold">ESTIMATIVA</span>
+                  Baseline de referência (não é medido)
+                </p>
+                <div className="flex items-end gap-4 mt-1.5">
+                  <div>
+                    <span className="text-2xl font-black text-blue-300 font-mono">-{totals.effort_saved_percentage}%</span>
+                    <span className="block text-[10px] text-blue-400/70">redução de esforço</span>
+                  </div>
+                  <div>
+                    <span className="text-2xl font-black text-blue-300 font-mono">{totals.speedup_factor}</span>
+                    <span className="block text-[10px] text-blue-400/70">speedup (100 min → 8 min)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {loadError && (
+            <div className="mt-4 text-xs bg-rose-950/40 border border-rose-500/40 text-rose-300 px-4 py-2 rounded-lg">
+              {loadError}
+            </div>
+          )}
+        </div>
+
+        {/* Pipeline Stage Stepper */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {[
+            { step: '01', title: 'Diff Analysis', agent: '01-change-analyzer', phase: 1 },
+            { step: '02', title: 'Code Review', agent: '02-code-reviewer', phase: 2 },
+            { step: '03', title: 'Docs Sync', agent: '03-documentation', phase: 2 },
+            { step: '04', title: 'Test Runner', agent: '04-test-engineer', phase: 2 },
+            { step: '05', title: 'Gatekeeper & Sign-off', agent: '05-validation', phase: 3 }
+          ].map((item, idx) => {
+            const isCompleted = pipelinePhase >= item.phase;
+            const isCurrent = pipelinePhase === item.phase - 1;
+
+            return (
+              <div
+                key={idx}
+                className={`p-3.5 rounded-xl border transition-all ${
+                  isCompleted
+                    ? 'bg-zinc-900/90 border-emerald-500/40 text-emerald-400'
+                    : isCurrent
+                    ? 'bg-blue-950/30 border-blue-500 text-blue-300 animate-pulse'
+                    : 'bg-zinc-900/40 border-zinc-800/60 text-zinc-500'
+                }`}
+              >
+                <div className="flex items-center justify-between text-[11px] font-mono mb-1">
+                  <span>STEP {item.step}</span>
+                  {isCompleted ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <Clock className="w-3.5 h-3.5" />}
+                </div>
+                <div className="font-bold text-xs text-white truncate">{item.title}</div>
+                <div className="text-[10px] text-zinc-400 truncate mt-0.5">.{item.agent}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Wait: is the server alive? */}
+        {isRunning && !runData && (
+          <div className="text-center py-10 text-sm text-blue-300 animate-pulse">
+            Executando pipeline real (jest + cobertura + análise estática)... 
+          </div>
+        )}
+
+        {/* Navigation Tabs */}
+        <div className="flex border-b border-zinc-800 space-x-2">
+          {[
+            { id: 'overview', label: 'Executive Overview', icon: Layers },
+            { id: 'agents', label: 'Subagents Pipeline', icon: Bot },
+            { id: 'impact', label: 'Impact & Blast Radius', icon: Network },
+            { id: 'diff', label: 'Git Diff Inspector', icon: FileCode },
+            { id: 'benchmarks', label: 'Benchmark Data', icon: Award }
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`pb-3 px-3 text-xs sm:text-sm font-semibold flex items-center gap-2 border-b-2 transition-all select-none ${
+                  isActive
+                    ? 'border-blue-500 text-blue-400'
+                    : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Tab Content Panels */}
+        <div className="space-y-6">
+          {activeTab === 'overview' && (
+            <div className="space-y-6">
+              <MetricsBadge benchmarkData={runData?.report} live={{
+                readiness: validation?.readiness_score,
+                coverage: tester?.coverage_percentage,
+                testsPassed: tester?.tests_passed,
+                testsTotal: tester?.tests_executed
+              }} />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <ImpactViewer impactData={runData?.agents?.analyzer?.data} />
+                <div className="space-y-6">
+                  <AgentStatus agentsData={runData?.agents} activePhase={pipelinePhase} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'agents' && (
+            <div className="space-y-6">
+              <AgentStatus agentsData={runData?.agents} activePhase={pipelinePhase} />
+            </div>
+          )}
+
+          {activeTab === 'impact' && (
+            <div className="space-y-6">
+              <ImpactViewer impactData={runData?.agents?.analyzer?.data} />
+            </div>
+          )}
+
+          {activeTab === 'diff' && (
+            <div className="space-y-6">
+              <DiffViewer diffContent={runData?.diff} diffMeta={runData?.agents?.analyzer?.data} />
+            </div>
+          )}
+
+          {activeTab === 'benchmarks' && (
+            <div className="space-y-6">
+              <MetricsBadge benchmarkData={runData?.report} live={{
+                readiness: validation?.readiness_score,
+                coverage: tester?.coverage_percentage,
+                testsPassed: tester?.tests_passed,
+                testsTotal: tester?.tests_executed
+              }} />
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* Human In The Loop Approval Modal */}
+      <HumanApprovalModal
+        isOpen={isApprovalOpen}
+        onClose={() => setIsApprovalOpen(false)}
+        onApprove={handleApprove}
+        isApproved={isApproved}
+      />
+
+      {/* Footer */}
+      <footer className="border-t border-zinc-800/60 py-6 mt-12 bg-zinc-950/60 text-center text-xs text-zinc-500">
+        <p>ChangeFlow — AI-Powered Software Change Intelligence • IBM Bob 2.0 Hackathon Challenge</p>
+        {runData && (
+          <p className="mt-1 text-zinc-600">
+            Tudo medido em tempo real nesta execução: {runData.total_execution_time}s de pipeline,{' '}
+            {tester?.tests_passed ?? '-'}/{tester?.tests_executed ?? '-'} testes,{' '}
+            {tester?.coverage_percentage ?? '-'}% de cobertura medida, score do reviewer {reviewer?.score ?? '-'}/100,
+            readiness {validation?.readiness_score ?? '-'}/100.
+          </p>
+        )}
+      </footer>
+    </div>
+  );
+}

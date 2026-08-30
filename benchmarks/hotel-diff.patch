@@ -1,0 +1,41 @@
+diff --git a/hotel-app/src/repository/hotel.repository.ts b/hotel-app/src/repository/hotel.repository.ts
+--- a/hotel-app/src/repository/hotel.repository.ts
++++ b/hotel-app/src/repository/hotel.repository.ts
+@@ -103,6 +103,12 @@ export class HotelRepository {
+     return updated;
+   }
+ 
++  async countConfirmedBookings(guestId: string): Promise<number> {
++    const bookings = await this.findBookingsByGuestId(guestId);
++    return bookings.filter(b => b.status === 'CONFIRMED' || b.status === 'COMPLETED').length;
++  }
++
+   async clear(): Promise<void> {
+     this.rooms.clear();
+     this.bookings.clear();
+diff --git a/hotel-app/src/services/hotel.service.ts b/hotel-app/src/services/hotel.service.ts
+--- a/hotel-app/src/services/hotel.service.ts
++++ b/hotel-app/src/services/hotel.service.ts
+@@ -104,6 +104,12 @@ export class HotelService {
+     const nights = this.calculateNights(input.checkIn, input.checkOut);
+     const baseRate = Number((nights * room.pricePerNight).toFixed(2));
+     const cleaningFee = this.calculateCleaningFee(room.type);
+-    const total = Number((baseRate + cleaningFee).toFixed(2));
++
++    // Loyalty discount: guests with more than 5 confirmed bookings get 10% off the base rate
++    const confirmedCount = await this.repository.countConfirmedBookings(input.guestId);
++    const discountedBaseRate = confirmedCount > 5
++      ? Number((baseRate * 0.9).toFixed(2))
++      : baseRate;
++    const total = Number((discountedBaseRate + cleaningFee).toFixed(2));
+ 
+     await this.repository.updateRoomAvailability(input.roomId, false);
+ 
+@@ -113,7 +119,7 @@ export class HotelService {
+       checkOut: input.checkOut,
+       nights,
+-      baseRate,
++      baseRate: discountedBaseRate,
+       cleaningFee,
+       total,
+       metadata: input.metadata,
